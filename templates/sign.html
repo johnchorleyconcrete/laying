@@ -1,0 +1,45 @@
+{% extends "base.html" %}{% block body %}
+<div class="card">
+<h1>Sign off {{ j.job_no }}</h1>
+<p><b>{{ j.customer }}</b><br>{{ j.site_address }} {{ j.postcode }}<br>
+{{ j.job_date }}{% if j.slot != 'ALL' %} {{ j.slot }}{% endif %} &nbsp; {{ j.crew.replace(",", " / ") }}</p>
+{% if j.work_desc %}<div style="white-space:pre-wrap;background:#f7f7f5;border:1px solid #e3e3e0;border-radius:5px;padding:10px;font-size:14px">{{ j.work_desc }}</div>{% endif %}
+{% if j.m3 %}<p style="margin-top:8px"><b>Concrete:</b> {{ j.m3 }}</p>{% endif %}
+
+<p style="margin-top:14px;font-size:14px">I confirm that the works described above have been
+carried out and completed to a satisfactory standard, and that the times and details recorded
+are correct.</p>
+
+<form method="post" id="f">
+<label>Print name</label>
+<input type="text" name="signed_name" required autocomplete="off">
+<label>Signature - sign in the box with your finger</label>
+<canvas id="pad" style="width:100%;height:190px;border:2px dashed #999;border-radius:6px;background:#fff;touch-action:none"></canvas>
+<input type="hidden" name="signature" id="sig">
+<button type="button" class="btn alt" onclick="clr()">Clear</button>
+<button class="btn" onclick="return grab()">Save signature</button>
+</form>
+</div>
+
+<script>
+var cv = document.getElementById('pad'), cx = cv.getContext('2d'), drawn = false, down = false;
+function size(){ var r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  cv.width = r.width * d; cv.height = r.height * d; cx.scale(d, d);
+  cx.lineWidth = 2.2; cx.lineCap = 'round'; cx.strokeStyle = '#111'; }
+size(); window.addEventListener('resize', size);
+function pt(e){ var r = cv.getBoundingClientRect(), t = e.touches ? e.touches[0] : e;
+  return [t.clientX - r.left, t.clientY - r.top]; }
+function start(e){ e.preventDefault(); down = true; drawn = true; var p = pt(e);
+  cx.beginPath(); cx.moveTo(p[0], p[1]); }
+function move(e){ if(!down) return; e.preventDefault(); var p = pt(e);
+  cx.lineTo(p[0], p[1]); cx.stroke(); }
+function end(){ down = false; }
+cv.addEventListener('mousedown', start); cv.addEventListener('mousemove', move);
+window.addEventListener('mouseup', end);
+cv.addEventListener('touchstart', start); cv.addEventListener('touchmove', move);
+cv.addEventListener('touchend', end);
+function clr(){ cx.clearRect(0, 0, cv.width, cv.height); drawn = false; }
+function grab(){ if(!drawn){ alert('Please sign in the box first'); return false; }
+  document.getElementById('sig').value = cv.toDataURL('image/png'); return true; }
+</script>
+{% endblock %}

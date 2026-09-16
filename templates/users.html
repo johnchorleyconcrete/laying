@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% block body %}
+<div class="card"><h1>Accounts</h1>
+<table><tr><th>Name</th><th>Email</th><th>Role</th><th>Crew</th><th>Status</th><th></th></tr>
+{% for x in users %}<tr>
+<td>{{ x.name }}</td><td style="font-size:13px">{{ x.email }}</td>
+<td><span class="tag">{{ x.role }}</span></td><td>{{ x.crew_code or "" }}</td>
+<td>{% if not x.active %}<span style="color:#a00">off</span>
+{% elif x.pw_hash %}<span style="color:#4a7d3a">active</span>
+{% else %}<span style="color:#b8860b">awaiting setup</span>{% endif %}</td>
+<td>
+<form method="post" style="display:inline"><input type="hidden" name="resend_id" value="{{ x.id }}">
+<button class="btn alt" style="padding:3px 8px;font-size:12px">Send link</button></form>
+{% if x.role != 'owner' and x.active %}
+<form method="post" style="display:inline"><input type="hidden" name="deactivate_id" value="{{ x.id }}">
+<button class="btn alt" style="padding:3px 8px;font-size:12px">Turn off</button></form>
+{% endif %}</td>
+</tr>{% endfor %}</table></div>
+
+<div class="card"><h2>Add someone</h2>
+<form method="post">
+<div class="row">
+<div><label>Name</label><input type="text" name="name" required></div>
+<div><label>Email</label><input type="email" name="email" required></div>
+</div>
+<div class="row">
+<div><label>Role</label><select name="role">
+<option value="crew">Crew - only their own jobs</option>
+<option value="office">Office - everything except accounts</option>
+<option value="owner">Owner - everything</option></select></div>
+<div><label>Crew code (crew only)</label><select name="crew_code">
+<option value="">-</option>{% for m in crew %}<option value="{{ m.code }}">{{ m.name }}</option>{% endfor %}</select></div>
+</div>
+<button class="btn">Create and send setup link</button>
+</form></div>{% endblock %}

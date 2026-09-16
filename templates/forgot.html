@@ -1,0 +1,30 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chorley Laying</title><style>
+:root{--orange:#E8642A;--orange-dk:#C25218;--ink:#1F2329;--muted:#5A6670;
+      --line:#D5DBDF;--bg:#EDEFF1}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Segoe UI",-apple-system,Arial,sans-serif;
+     font-size:16px;padding:44px 18px}
+.box{max-width:360px;margin:0 auto;background:#fff;border:1px solid var(--line);
+     border-top:5px solid var(--orange);border-radius:10px;padding:26px}
+.box img{display:block;max-width:170px;margin:0 auto 16px}
+h2{margin:0 0 4px;font-size:21px}
+.sub{margin:0 0 18px;color:var(--muted);font-size:14px}
+input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:6px;
+      font:inherit;font-size:16px;margin-bottom:9px}
+input:focus{outline:3px solid rgba(232,100,42,.28);border-color:var(--orange)}
+button{width:100%;padding:13px;background:var(--orange);color:#fff;border:0;border-radius:7px;
+       font:inherit;font-weight:700;font-size:16px;cursor:pointer;margin-top:4px}
+button:hover{background:var(--orange-dk)}
+.flash{background:#FBEEE6;border-left:5px solid var(--orange);color:var(--orange-dk);
+       padding:11px 13px;border-radius:7px;font-size:14px;font-weight:600;margin-bottom:12px}
+.lnk{margin:16px 0 0;text-align:center}
+.lnk a{color:var(--muted);font-size:13px}
+</style><body><div class="box"><img src="/static/logo.png" alt="Chorley Concrete"><h2>Reset your password</h2><p class="sub">We will email you a link</p>{% with ms = get_flashed_messages() %}{% for m in ms %}<div class="flash">{{ m }}</div>{% endfor %}{% endwith %}<form method="post">
+<img src="/static/logo.png">
+<p>We will email you a link.</p>
+{% with ms = get_flashed_messages() %}{% for m in ms %}<p>{{ m }}</p>{% endfor %}{% endwith %}
+<input type="email" name="email" placeholder="Email" required autofocus
+>
+<button>Send me a link</button>
+<p><a href="/login">Back to sign in</a></p>
+</form><p class="lnk"><a href="/login">Back to sign in</a></p></div></body>

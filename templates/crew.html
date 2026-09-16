@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block body %}
+<div class="card"><h1>Crew</h1>
+<form method="post"><table>
+<tr><th>Name</th><th>Phone</th><th>Email</th></tr>
+{% for m in crew %}<tr>
+<td>{{ m.name }}<input type="hidden" name="id" value="{{ m.id }}">
+{% if m.subcontractor %}<br><span class="tag">subcontractor</span>{% endif %}</td>
+<td><input type="text" name="phone_{{ m.id }}" value="{{ m.phone or '' }}"></td>
+<td><input type="text" name="email_{{ m.id }}" value="{{ m.email or '' }}"></td>
+</tr>{% endfor %}</table>
+<button class="btn">Save</button></form></div>{% endblock %}

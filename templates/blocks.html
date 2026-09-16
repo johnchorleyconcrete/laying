@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% block body %}
+<div class="card"><h1>Book time off</h1>
+<form method="post">
+<div class="row">
+<div><label>From</label><input type="date" name="date_from" value="{{ today }}" required></div>
+<div><label>To</label><input type="date" name="date_to" value="{{ today }}" required></div>
+<div><label>Slot</label><select name="slot">{% for s in slots %}<option>{{ s }}</option>{% endfor %}</select></div>
+</div>
+<label>Who</label>
+{% for m in crew %}<label style="font-weight:400"><input type="checkbox" name="crew" value="{{ m.code }}"> {{ m.name }}{% if m.subcontractor %} (subcontractor - will be logged as Not available){% endif %}</label>{% endfor %}
+<div class="row">
+<div><label>Reason</label><select name="reason">
+<option>Holiday</option><option>Not available</option><option>Away working</option>
+<option>Training</option><option>Sick</option><option>Other</option></select></div>
+<div><label>Note (optional)</label><input type="text" name="note" placeholder="Aberdeen"></div>
+</div>
+<label style="font-weight:400"><input type="checkbox" name="skip_sundays" checked> Skip Sundays</label>
+<button class="btn">Block these days</button>
+</form></div>
+
+<div class="card"><h2>Blocked days</h2>
+<table><tr><th>Date</th><th>Who</th><th>Slot</th><th>Reason</th><th>Note</th><th></th></tr>
+{% for b in blocks %}<tr>
+<td>{{ b.block_date }}</td><td>{{ b.crew }}</td><td>{{ b.slot }}</td>
+<td>{{ b.reason }}</td><td style="color:#666;font-size:13px">{{ b.note or "" }}</td>
+<td><form method="post" style="display:inline"><input type="hidden" name="delete_id" value="{{ b.id }}">
+<button class="btn alt" style="padding:3px 9px;font-size:12px">Remove</button></form></td>
+</tr>{% else %}<tr><td colspan="6">Nothing blocked.</td></tr>{% endfor %}
+</table></div>{% endblock %}

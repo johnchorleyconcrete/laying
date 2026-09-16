@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block body %}
+<div class="card"><h1>Your jobs</h1>
+{% for j in jobs %}
+<a href="/jobs/{{ j.id }}" style="display:block;border:1px solid #ddd;border-left:4px solid {% if j.signed_at %}#4a7d3a{% else %}#1a1a1a{% endif %};border-radius:5px;padding:11px;margin-bottom:8px;text-decoration:none;color:#1a1a1a;background:#fff">
+<b>{{ j.job_date }}{% if j.slot != 'ALL' %} {{ j.slot }}{% endif %}{% if j.start_time %} - {{ j.start_time }}{% endif %}</b>
+{% if j.signed_at %}<span class="tag done" style="float:right">signed</span>{% endif %}<br>
+<b>{{ j.job_no }}</b> &nbsp; {{ j.customer }}<br>
+{{ j.site_address }} {{ j.postcode }}
+{% if j.work_desc %}<div style="color:#555;font-size:13px;margin-top:5px">{{ j.work_desc[:110] }}{% if j.work_desc|length > 110 %}...{% endif %}</div>{% endif %}
+</a>
+{% else %}<p>Nothing booked for you at the moment.</p>{% endfor %}
+</div>{% endblock %}

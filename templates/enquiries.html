@@ -1,0 +1,55 @@
+{% extends "base.html" %}{% block body %}
+<div class="card">
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<h1 style="margin:0;flex:1">Screed enquiries</h1>
+<a class="btn alt" href="/enquiries?show={% if show == 'all' %}open{% else %}all{% endif %}">
+{% if show == 'all' %}Show open only{% else %}Show all{% endif %}</a>
+</div>
+</div>
+
+{% for e in enquiries %}
+<div class="card">
+<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:baseline">
+<h2 style="margin:0;flex:1">{{ e.name }} <span style="color:#777;font-weight:400">{{ e.pc }}</span></h2>
+<span class="tag {{ e.status }}">{{ e.status }}</span>
+</div>
+<p style="margin:6px 0;font-size:14px">
+{{ e.addr }}<br>
+<b>{{ e.phone }}</b><br>
+<span style="color:#666">Taken by {{ e.taken_by }} - {{ e.logged }}</span></p>
+
+<table style="font-size:14px">
+{% if e.type %}<tr><td><b>Type</b></td><td>{{ e.type }}</td></tr>{% endif %}
+{% if e.svc %}<tr><td><b>Service</b></td><td>{{ e.svc }}</td></tr>{% endif %}
+{% if e.l or e.w %}<tr><td><b>Size</b></td><td>{{ e.l }} x {{ e.w }}{% if e.d %} at {{ e.d }}mm{% endif %}</td></tr>{% endif %}
+{% if e.area %}<tr><td><b>Area</b></td><td>{{ e.area }} m2</td></tr>{% endif %}
+{% if e.vol %}<tr><td><b>Volume</b></td><td>{{ e.vol }} m3</td></tr>{% endif %}
+{% if e.whn %}<tr><td><b>When</b></td><td>{{ e.whn }}</td></tr>{% endif %}
+{% if e.urgency %}<tr><td><b>Urgency</b></td><td>{{ e.urgency }}</td></tr>{% endif %}
+</table>
+
+{% if e.notes %}<div style="background:#f7f7f5;border:1px solid #e3e3e0;border-radius:5px;padding:9px;margin-top:8px;white-space:pre-wrap;font-size:14px">{{ e.notes }}</div>{% endif %}
+
+{% if pix.get(e.id) %}
+<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px">
+{% for f in pix.get(e.id) %}
+<a href="/static/enquiry_photos/{{ f }}" target="_blank">
+<img src="/static/enquiry_photos/{{ f }}" style="height:110px;border-radius:5px;border:1px solid #ddd"></a>
+{% endfor %}</div>
+{% endif %}
+
+<div style="margin-top:12px">
+{% if e.quote_id %}
+<a class="btn alt" href="/quotes/{{ e.quote_id }}">See the quote</a>
+{% else %}
+<a class="btn" href="/quotes/new?from_enquiry={{ e.id }}">Price it up</a>
+<form method="post" action="/enquiries/{{ e.id }}/park" style="display:inline">
+<input type="hidden" name="status" value="parked">
+<button class="btn alt">Park it</button></form>
+{% endif %}
+</div>
+</div>
+{% else %}
+<div class="card"><p>No enquiries.</p></div>
+{% endfor %}
+{% endblock %}

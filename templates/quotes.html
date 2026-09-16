@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block body %}
+<div class="card"><h1>Quotes</h1>
+<table><tr><th>No</th><th>Customer</th><th>Issued</th><th>Valid to</th><th>Price</th><th>Status</th></tr>
+{% for q in quotes %}<tr>
+<td><a href="/quotes/{{ q.id }}">{{ q.quote_no }}</a></td>
+<td>{{ q.customer }}</td><td>{{ q.date_issued }}</td>
+<td {% if q.valid_until < today and q.status != 'accepted' %}style="color:#a00;font-weight:700"{% endif %}>{{ q.valid_until }}</td>
+<td>{{ "%.2f"|format(q.price) }}</td>
+<td><span class="tag {{ q.status }}">{{ q.status }}</span></td>
+</tr>{% else %}<tr><td colspan="6">None yet.</td></tr>{% endfor %}
+</table></div>{% endblock %}

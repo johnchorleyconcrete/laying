@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block body %}
+<div class="card"><h1>New job (no quote)</h1>
+<form method="post">
+<div class="row">
+<div><label>Customer</label><input type="text" name="customer" required></div>
+<div><label>Quote no (if there is one)</label><input type="text" name="quote_no"></div>
+</div>
+<div class="row">
+<div><label>Site address</label><input type="text" name="site_address"></div>
+<div><label>Postcode</label><input type="text" name="postcode" required></div>
+</div>
+<div class="row">
+<div><label>Phone</label><input type="text" name="contact_phone"></div>
+<div><label>Date</label><input type="date" name="job_date" value="{{ d }}" required></div>
+<div><label>Slot</label><select name="slot">{% for s in slots %}<option>{{ s }}</option>{% endfor %}</select></div>
+</div>
+<label>On the job</label>
+{% for m in crew %}<label style="font-weight:400"><input type="checkbox" name="crew" value="{{ m.code }}"> {{ m.name }}{% if m.subcontractor %} (subcontractor){% endif %}</label>{% endfor %}
+<label>Work</label><textarea name="work_desc"></textarea>
+<label>Notes</label><textarea name="notes" style="min-height:70px"></textarea>
+<button class="btn">Book it</button>
+</form></div>{% endblock %}

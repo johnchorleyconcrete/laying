@@ -1,0 +1,19 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<body style="font:15px -apple-system,Arial,sans-serif;background:#f4f4f2;padding:50px 18px;margin:0">
+{% if expired %}
+<div style="max-width:330px;margin:0 auto;background:#fff;padding:24px;border:1px solid #ddd;border-radius:6px">
+<img src="/static/logo.png" style="display:block;max-width:160px;margin:0 auto 12px"><h2 style="margin:0 0 8px">Link has expired</h2>
+<p style="color:#666;font-size:14px">Ask the office to send you a new one.</p>
+<p><a href="/login">Back to sign in</a></p></div>
+{% else %}
+<form method="post" style="max-width:330px;margin:0 auto;background:#fff;padding:24px;border:1px solid #ddd;border-radius:6px">
+<img src="/static/logo.png" style="display:block;max-width:160px;margin:0 auto 12px"><h2 style="margin:0 0 4px">Set your password</h2>
+<p style="margin:0 0 16px;color:#777;font-size:13px">{{ u.name }} - {{ u.email }}</p>
+{% with ms = get_flashed_messages() %}{% for m in ms %}<p style="background:#ffe9a8;padding:8px;border-radius:4px;font-size:13px">{{ m }}</p>{% endfor %}{% endwith %}
+<input type="password" name="pw" placeholder="New password" required minlength="8" autocomplete="new-password"
+ style="width:100%;padding:9px;border:1px solid #bbb;border-radius:4px;font:inherit;box-sizing:border-box">
+<input type="password" name="pw2" placeholder="Type it again" required minlength="8" autocomplete="new-password"
+ style="width:100%;margin-top:8px;padding:9px;border:1px solid #bbb;border-radius:4px;font:inherit;box-sizing:border-box">
+<p style="color:#888;font-size:12px;margin:8px 0 0">At least 8 characters.</p>
+<button style="width:100%;margin-top:12px;padding:11px;background:#1a1a1a;color:#fff;border:0;border-radius:4px;font:inherit;font-weight:600">Save password</button>
+</form>{% endif %}</body>

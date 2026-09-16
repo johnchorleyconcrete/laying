@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% block body %}
+<div class="card"><h1>Completed jobs</h1>
+<table><tr><th>Signed</th><th>Job</th><th>Customer</th><th>Postcode</th><th>Signed by</th><th></th></tr>
+{% for j in jobs %}<tr>
+<td>{{ j.signed_at[:16].replace("T", " ") }}</td>
+<td><a href="/jobs/{{ j.id }}">{{ j.job_no }}</a></td>
+<td>{{ j.customer }}</td><td>{{ j.postcode }}</td><td>{{ j.signed_name }}</td>
+<td><a class="btn alt" style="padding:3px 9px;font-size:12px" href="/completed/{{ j.id }}/pdf">PDF</a></td>
+</tr>{% else %}<tr><td colspan="6">Nothing signed off yet.</td></tr>{% endfor %}
+</table></div>{% endblock %}

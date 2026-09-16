@@ -1,0 +1,6 @@
+import sys, os
+path = "/home/SalesChorleyConcrete/laying"
+if path not in sys.path:
+    sys.path.insert(0, path)
+os.environ.setdefault("LAYING_SECRET", "PUT-A-LONG-RANDOM-STRING-HERE")
+from app import app as application

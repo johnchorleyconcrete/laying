@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% block body %}
+<div class="card">
+<h1>Quote {{ q.quote_no }} <span class="tag {{ q.status }}">{{ q.status }}</span></h1>
+<p><b>{{ q.customer }}</b><br>{{ q.site_address }} {{ q.postcode }}<br>{{ q.contact_phone }}</p>
+<p>Issued {{ q.date_issued }} &nbsp; Valid until {{ q.valid_until }}
+{% if q.valid_until < today and q.status != 'accepted' %}
+<b style="color:#a00">- EXPIRED, price needs re-confirming</b>{% endif %}</p>
+<p style="white-space:pre-wrap">{{ q.work_desc }}</p>
+{% if q.extras %}<h2>Extras</h2><p style="white-space:pre-wrap">{{ q.extras }}</p>{% endif %}
+<p><b>GBP {{ "%.2f"|format(q.price) }}{% if q.vat %} + VAT{% endif %}</b></p>
+<a class="btn" href="/quotes/{{ q.id }}/pdf">Download PDF</a>
+{% for s in ['sent','declined'] %}
+<form method="post" action="/quotes/{{ q.id }}/status" style="display:inline">
+<input type="hidden" name="status" value="{{ s }}">
+<button class="btn alt">Mark {{ s }}</button></form>{% endfor %}
+</div>
+
+{% if job %}
+<div class="card"><h2>Booked</h2>
+<p><a href="/jobs/{{ job.id }}">{{ job.job_no }}</a> - {{ job.job_date }} {{ job.slot }}</p></div>
+{% else %}
+<div class="card"><h2>Customer has gone ahead - book it in</h2>
+<form method="post" action="/quotes/{{ q.id }}/book">
+<div class="row">
+<div><label>Date</label><input type="date" name="job_date" required></div>
+<div><label>Slot</label><select name="slot">{% for s in slots %}<option>{{ s }}</option>{% endfor %}</select></div>
+</div>
+<label>On the job</label>
+{% for m in crew %}<label style="font-weight:400"><input type="checkbox" name="crew" value="{{ m.code }}"> {{ m.name }}{% if m.subcontractor %} (subcontractor){% endif %}</label>{% endfor %}
+<label>Notes for the lads</label><textarea name="notes" style="min-height:70px"></textarea>
+<button class="btn">Book it</button>
+</form></div>
+{% endif %}{% endblock %}

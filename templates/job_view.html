@@ -1,0 +1,81 @@
+{% extends "base.html" %}{% block body %}
+<div class="card">
+<h1>{{ j.job_no }} <span class="tag {{ j.status }}">{{ j.status }}</span></h1>
+<p><b>{{ j.customer }}</b><br>{{ j.site_address }} {{ j.postcode }}<br>{{ j.contact_phone }}</p>
+<a class="btn alt" href="/jobs/{{ j.id }}/sheet">Print job sheet</a>
+{% if j.signed_at %}
+<p style="margin-top:10px"><b>Signed off</b> by {{ j.signed_name }} on
+{{ j.signed_at[:16].replace("T"," ") }}{% if j.signed_by %}, taken by {{ j.signed_by }}{% endif %}</p>
+{% else %}
+<a class="btn" href="/jobs/{{ j.id }}/sign">Get it signed off</a>
+{% endif %}
+{% if j.quote_id %}<p><a href="/quotes/{{ j.quote_id }}">See the quote</a></p>{% endif %}</div>
+
+<div class="card">
+<h2>Photos of the finished job</h2>
+{% if not j.signed_at %}
+<p style="font-size:14px;color:#666">At least {{ min_photos }} needed before this can be signed off.
+You have {{ pics|length }}.</p>
+<form method="post" action="/jobs/{{ j.id }}/photos" enctype="multipart/form-data">
+<input type="file" name="photos" accept="image/*" capture="environment" multiple
+ style="width:100%;padding:8px;border:1px solid #bbb;border-radius:4px;background:#fff">
+<button class="btn">Add photos</button>
+</form>
+{% endif %}
+{% if pics %}
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+{% for p in pics %}
+<div style="width:132px">
+<a href="/static/job_photos/{{ p.filename }}" target="_blank">
+<img src="/static/job_photos/{{ p.filename }}" style="width:132px;height:100px;object-fit:cover;border-radius:5px;border:1px solid #ddd"></a>
+<div style="font-size:11px;color:#777;margin-top:2px">{{ p.uploaded_by }}</div>
+{% if not j.signed_at %}
+<form method="post" action="/jobs/{{ j.id }}/photos/{{ p.id }}/delete">
+<button class="btn alt" style="padding:2px 7px;font-size:11px;margin-top:2px">Remove</button></form>
+{% endif %}
+</div>
+{% endfor %}</div>
+{% endif %}
+</div>
+
+<div class="card">
+<form method="post">
+<div class="row">
+<div><label>Date</label><input type="date" name="job_date" value="{{ j.job_date }}"></div>
+<div><label>Slot</label><select name="slot">{% for s in slots %}<option {% if s==j.slot %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+<div><label>On site</label><input type="text" name="start_time" value="{{ j.start_time or '' }}" placeholder="8am"></div>
+<div><label>Status</label><select name="status">{% for s in ['booked','done','cancelled'] %}<option {% if s==j.status %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+</div>
+
+<label>On the job</label>
+{% for m in crew %}<label style="font-weight:400"><input type="checkbox" name="crew" value="{{ m.code }}" {% if m.code in j.crew.split(",") %}checked{% endif %}> {{ m.name }}{% if m.subcontractor %} (subcontractor){% endif %}</label>{% endfor %}
+
+<label>The job</label>
+<textarea name="work_desc">{{ j.work_desc or "" }}</textarea>
+
+<div class="row">
+<div><label>Concrete / size (heading line)</label><input type="text" name="m3" value="{{ j.m3 or '' }}" placeholder="24 m2   or   3.0 m3 C35 + fibres"></div>
+<div><label>Kit and plant</label><input type="text" name="kit" value="{{ j.kit or '' }}"></div>
+</div>
+
+<label>Quantities (one per line)</label>
+<textarea name="quantities" style="min-height:70px" placeholder="One per line">{{ j.quantities or "" }}</textarea>
+
+<label>Tick off as you go (one item per line)</label>
+<textarea name="tick_list" style="min-height:130px" placeholder="One work item per line">{{ j.tick_list or "" }}</textarea>
+
+<div class="row">
+<div><label>Check with who?</label><input type="text" name="check_who" value="{{ j.check_who or '' }}" placeholder="Customer first name"></div>
+</div>
+<label>Check before you start (one per line)</label>
+<textarea name="check_first" style="min-height:90px" placeholder="One per line">{{ j.check_first or "" }}</textarea>
+
+<label>Notes</label>
+<textarea name="notes">{{ j.notes or "" }}</textarea>
+
+<button class="btn">Save</button>
+</form></div>
+
+{% if sent %}<div class="card"><h2>Sent</h2>
+{% for s in sent %}<div style="font-size:13px">{{ s.sent_at }} - {{ s.channel }} to {{ s.target }}</div>{% endfor %}</div>{% endif %}
+{% endblock %}

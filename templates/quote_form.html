@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% block body %}
+{% set p = pre or {} %}
+<div class="card"><h1>New quote</h1>
+{% if p.enquiry_id %}<p style="background:#eef4ea;border:1px solid #cde0c4;border-radius:5px;padding:8px;font-size:14px">
+Filled in from screed enquiry #{{ p.enquiry_id }}. Check it over and add the price.</p>{% endif %}
+<form method="post">
+{% if p.enquiry_id %}<input type="hidden" name="enquiry_id" value="{{ p.enquiry_id }}">{% endif %}
+<div class="row">
+<div><label>Quote number</label><input type="text" name="quote_no" required placeholder="4127"></div>
+<div><label>Customer</label><input type="text" name="customer" required value="{{ p.customer or '' }}"></div>
+</div>
+<div class="row">
+<div><label>Site address</label><input type="text" name="site_address" value="{{ p.site_address or '' }}"></div>
+<div><label>Postcode</label><input type="text" name="postcode" value="{{ p.postcode or '' }}"></div>
+</div>
+<div class="row">
+<div><label>Phone</label><input type="text" name="contact_phone" value="{{ p.contact_phone or '' }}"></div>
+<div><label>Email</label><input type="email" name="contact_email"></div>
+</div>
+<div class="row">
+<div><label>Issued</label><input type="date" name="date_issued" value="{{ today }}"></div>
+<div><label>Valid until</label><input type="date" name="valid_until" value="{{ valid }}"></div>
+</div>
+<label>Work to be carried out</label>
+<textarea name="work_desc">{{ p.work_desc or '' }}</textarea>
+<label>Extras</label><textarea name="extras" style="min-height:70px"></textarea>
+<label>Not included</label><textarea name="exclusions" style="min-height:70px"></textarea>
+<div class="row">
+<div><label>Price (net)</label><input type="number" step="0.01" name="price" required></div>
+<div><label style="margin-top:32px"><input type="checkbox" name="vat" checked> Plus VAT</label></div>
+</div>
+<button class="btn">Save quote</button>
+</form></div>{% endblock %}

@@ -1,0 +1,25 @@
+# Customer data - never commit
+laying.db
+laying.db-journal
+pdfs/*
+!pdfs/.gitkeep
+static/job_photos/*
+!static/job_photos/.gitkeep
+static/enquiry_photos/*
+!static/enquiry_photos/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+env/
+
+# Editor / OS junk
+*.bak
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
