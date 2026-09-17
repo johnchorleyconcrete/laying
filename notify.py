@@ -1,4 +1,4 @@
-import os, sys, ssl, smtplib, argparse, re
+import os, sys, argparse, re
 from datetime import date, timedelta, datetime
 from email.message import EmailMessage
 
@@ -7,20 +7,7 @@ sys.path.insert(0, "/home/SalesChorleyConcrete/GenieAgg")
 
 from models import conn
 from recipients import OFFICE
-
-# Prefer this app's own .env if it has one; fall back to GenieAgg's so
-# existing deployments keep working either way.
-for _env in ("/home/SalesChorleyConcrete/laying/.env",
-             "/home/SalesChorleyConcrete/GenieAgg/.env"):
-    if os.path.exists(_env):
-        for _line in open(_env):
-            _line = _line.strip()
-            if _line and not _line.startswith("#") and "=" in _line:
-                _k, _v = _line.split("=", 1)
-                os.environ.setdefault(_k.strip(), _v.strip())
-
-GMAIL_USER = os.environ.get("GMAIL_USER")
-GMAIL_PASS = os.environ.get("GMAIL_APP_PASSWORD")
+import mailer
 
 CHECKS = [
     "Falls agreed and signed by the customer BEFORE pouring",
@@ -45,14 +32,11 @@ def send_email(to, subject, html):
     if not to:
         return
     m = EmailMessage()
-    m["From"] = GMAIL_USER
     m["To"] = ", ".join(to)
     m["Subject"] = subject
     m.set_content("This job sheet needs an HTML mail client.")
     m.add_alternative(html, subtype="html")
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context()) as s:
-        s.login(GMAIL_USER, GMAIL_PASS)
-        s.send_message(m)
+    mailer.send(m)
 
 GENIE_API_KEY = os.environ.get("GENIE_API_KEY")
 

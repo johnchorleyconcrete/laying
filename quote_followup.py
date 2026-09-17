@@ -1,4 +1,4 @@
-import os, sys, ssl, smtplib, argparse
+import os, sys, argparse
 from datetime import date, timedelta, datetime
 from email.message import EmailMessage
 
@@ -7,33 +7,19 @@ sys.path.insert(0, "/home/SalesChorleyConcrete/laying")
 from models import conn
 from recipients import OFFICE
 import quotepdf
+import mailer
 
 FOLLOWUP_DAYS = 2
-
-for _env in ("/home/SalesChorleyConcrete/laying/.env",
-             "/home/SalesChorleyConcrete/GenieAgg/.env"):
-    if os.path.exists(_env):
-        for _l in open(_env):
-            _l = _l.strip()
-            if _l and not _l.startswith("#") and "=" in _l:
-                _k, _v = _l.split("=", 1)
-                os.environ.setdefault(_k.strip(), _v.strip())
-
-GMAIL_USER = os.environ.get("GMAIL_USER")
-GMAIL_PASS = os.environ.get("GMAIL_APP_PASSWORD")
 
 
 def send_office_email(subject, html):
     to = [e for e, _ in OFFICE]
     m = EmailMessage()
-    m["From"] = GMAIL_USER
     m["To"] = ", ".join(to)
     m["Subject"] = subject
     m.set_content("This needs an HTML mail client.")
     m.add_alternative(html, subtype="html")
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context()) as s:
-        s.login(GMAIL_USER, GMAIL_PASS)
-        s.send_message(m)
+    mailer.send(m)
 
 
 def run(dry):

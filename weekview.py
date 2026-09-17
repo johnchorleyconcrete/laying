@@ -1,19 +1,11 @@
-import os, sys, ssl, smtplib, argparse
+import os, sys, argparse
 from datetime import date, timedelta, datetime
 from email.message import EmailMessage
 
 sys.path.insert(0, "/home/SalesChorleyConcrete/laying")
 from models import conn
 from recipients import WEEKVIEW_TO as TO
-
-for _env in ("/home/SalesChorleyConcrete/laying/.env",
-             "/home/SalesChorleyConcrete/GenieAgg/.env"):
-    if os.path.exists(_env):
-        for _l in open(_env):
-            _l = _l.strip()
-            if _l and not _l.startswith("#") and "=" in _l:
-                _k, _v = _l.split("=", 1)
-                os.environ.setdefault(_k.strip(), _v.strip())
+import mailer
 
 ORANGE, INK, MUTED, LINE = "#E8642A", "#1F2329", "#5A6670", "#D5DBDF"
 
@@ -108,15 +100,12 @@ def run(start=None, dry=False):
         return
 
     m = EmailMessage()
-    m["From"] = os.environ.get("GMAIL_USER")
     m["To"] = ", ".join(TO)
     m["Subject"] = "Laying diary - %d free half days from %s" % (free, days[0].strftime("%a %d %b"))
     m.set_content("This needs an HTML mail client. See %s" %
                   "https://laying-saleschorleyconcrete.pythonanywhere.com")
     m.add_alternative(html, subtype="html")
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context()) as s:
-        s.login(os.environ.get("GMAIL_USER"), os.environ.get("GMAIL_APP_PASSWORD"))
-        s.send_message(m)
+    mailer.send(m)
     print("sent -", free, "free half days")
 
 if __name__ == "__main__":

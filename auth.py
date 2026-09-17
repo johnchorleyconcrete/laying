@@ -1,26 +1,12 @@
-import os, ssl, smtplib, secrets, hashlib
+import os, secrets, hashlib
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from functools import wraps
 from flask import session, redirect, url_for, request, flash
 from models import conn
+import mailer
 
 SITE = "https://laying-saleschorleyconcrete.pythonanywhere.com"
-
-# Prefer this app's own .env if it has one; fall back to GenieAgg's so
-# existing deployments that only ever had the GenieAgg copy keep working.
-# (Relying solely on another project's .env means this app's email/SMS can
-# break the moment someone touches GenieAgg without knowing laying depends
-# on it - move GMAIL_USER/GMAIL_APP_PASSWORD/GENIE_API_KEY into a local
-# .env here when convenient.)
-for _env in ("/home/SalesChorleyConcrete/laying/.env",
-             "/home/SalesChorleyConcrete/GenieAgg/.env"):
-    if os.path.exists(_env):
-        for _l in open(_env):
-            _l = _l.strip()
-            if _l and not _l.startswith("#") and "=" in _l:
-                _k, _v = _l.split("=", 1)
-                os.environ.setdefault(_k.strip(), _v.strip())
 
 def hash_pw(pw, salt=None):
     salt = salt or secrets.token_hex(16)
@@ -75,14 +61,11 @@ border-radius:4px;text-decoration:none;display:inline-block">Set my password</a>
 If you were not expecting this, ignore it and tell the office.</p>
 </div>""" % (name, what, link, link))
     m = EmailMessage()
-    m["From"] = os.environ.get("GMAIL_USER")
     m["To"] = email
     m["Subject"] = "Chorley Concrete laying system - %s" % what
     m.set_content("Open this link to %s: %s" % (what, link))
     m.add_alternative(body, subtype="html")
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context()) as s:
-        s.login(os.environ.get("GMAIL_USER"), os.environ.get("GMAIL_APP_PASSWORD"))
-        s.send_message(m)
+    mailer.send(m)
     return link
 
 def new_token(user_id):

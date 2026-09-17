@@ -1,4 +1,4 @@
-import os, sys, ssl, smtplib, zipfile, shutil
+import os, sys, zipfile, shutil
 from datetime import date, datetime
 from email.message import EmailMessage
 
@@ -6,16 +6,8 @@ BASE = "/home/SalesChorleyConcrete/laying"
 sys.path.insert(0, BASE)
 
 from recipients import BACKUP_TO as TO
+import mailer
 MAX_MB = 20
-
-for _env in ("/home/SalesChorleyConcrete/laying/.env",
-             "/home/SalesChorleyConcrete/GenieAgg/.env"):
-    if os.path.exists(_env):
-        for _l in open(_env):
-            _l = _l.strip()
-            if _l and not _l.startswith("#") and "=" in _l:
-                _k, _v = _l.split("=", 1)
-                os.environ.setdefault(_k.strip(), _v.strip())
 
 def run():
     stamp = date.today().isoformat()
@@ -75,7 +67,6 @@ def run():
             % (stamp, n, rows, note))
 
     m = EmailMessage()
-    m["From"] = os.environ.get("GMAIL_USER")
     m["To"] = ", ".join(TO)
     m["Subject"] = "Laying system backup - %s" % stamp
     m.set_content("Laying system backup for %s. %d files." % (stamp, n))
@@ -84,9 +75,7 @@ def run():
         with open(fp, "rb") as fh:
             m.add_attachment(fh.read(), maintype="application", subtype="octet-stream",
                              filename=os.path.basename(fp))
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context()) as s:
-        s.login(os.environ.get("GMAIL_USER"), os.environ.get("GMAIL_APP_PASSWORD"))
-        s.send_message(m)
+    mailer.send(m)
     print("backup sent -", n, "files, zip %.1f MB" % zmb)
     shutil.rmtree(tmp, ignore_errors=True)
 

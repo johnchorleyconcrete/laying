@@ -1,6 +1,7 @@
-import re, os, ssl, smtplib
+import re, os
 from email.message import EmailMessage
 from fpdf import FPDF
+import mailer
 
 COMPANY   = "CHORLEY CONCRETE"
 ADDR_LINE = "Appley Lane North, Appley Bridge, Wigan, WN6 9DR"
@@ -121,12 +122,6 @@ def build(q):
     return path
 
 
-def _smtp_send(m):
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context()) as s:
-        s.login(os.environ.get("GMAIL_USER"), os.environ.get("GMAIL_APP_PASSWORD"))
-        s.send_message(m)
-
-
 def send_quote_email(q, pdf_path):
     """Emails the quote PDF to the customer email on the quote record."""
     company = COMPANY.title()
@@ -142,7 +137,6 @@ def send_quote_email(q, pdf_path):
             "<p>%s<br>%s</p></div>"
             % (ascii_only(q["quote_no"]), q["valid_until"], company, ascii_only(CONTACT)))
     m = EmailMessage()
-    m["From"] = os.environ.get("GMAIL_USER")
     m["To"] = q["contact_email"]
     m["Subject"] = "Your quote %s from %s" % (ascii_only(q["quote_no"]), company)
     m.set_content(text)
@@ -150,7 +144,7 @@ def send_quote_email(q, pdf_path):
     with open(pdf_path, "rb") as f:
         m.add_attachment(f.read(), maintype="application", subtype="pdf",
                          filename=os.path.basename(pdf_path))
-    _smtp_send(m)
+    mailer.send(m)
 
 
 def send_quote_followup_email(q):
@@ -171,9 +165,8 @@ def send_quote_followup_email(q):
             % (ascii_only(q["quote_no"]), ascii_only(where), q["valid_until"],
                company, ascii_only(CONTACT)))
     m = EmailMessage()
-    m["From"] = os.environ.get("GMAIL_USER")
     m["To"] = q["contact_email"]
     m["Subject"] = "Following up on quote %s" % ascii_only(q["quote_no"])
     m.set_content(text)
     m.add_alternative(html, subtype="html")
-    _smtp_send(m)
+    mailer.send(m)
