@@ -16,6 +16,20 @@
 <button class="btn alt">Mark {{ s }}</button></form>{% endfor %}
 </div>
 
+<div class="card">
+<h2>Email to customer</h2>
+<form method="post" action="/quotes/{{ q.id }}/email">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label>Customer email</label>
+<input type="email" name="contact_email" value="{{ q.contact_email or '' }}" required>
+<button class="btn">Email quote to customer</button>
+</form>
+{% if q.sent_at %}<p style="font-size:13px;color:#666;margin-top:8px">
+Last emailed to them {{ q.sent_at[:16].replace("T"," ") }}
+{% if q.followup_sent_at %} &nbsp;|&nbsp; follow-up sent {{ q.followup_sent_at[:16].replace("T"," ") }}{% endif %}
+</p>{% endif %}
+</div>
+
 {% if job %}
 <div class="card"><h2>Booked</h2>
 <p><a href="/jobs/{{ job.id }}">{{ job.job_no }}</a> - {{ job.job_date }} {{ job.slot }}</p></div>

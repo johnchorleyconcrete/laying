@@ -26,7 +26,9 @@ CREATE TABLE IF NOT EXISTS quotes (
     vat INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL DEFAULT 'draft',
     created_at TEXT NOT NULL,
-    enquiry_id INTEGER
+    enquiry_id INTEGER,
+    sent_at TEXT,
+    followup_sent_at TEXT
 );
 CREATE TABLE IF NOT EXISTS jobs (
     id INTEGER PRIMARY KEY,
@@ -158,6 +160,8 @@ _MIGRATIONS = [
     ("jobs", "completed_at", "TEXT"),
     ("crew", "genie_id", "TEXT"),
     ("quotes", "enquiry_id", "INTEGER"),
+    ("quotes", "sent_at", "TEXT"),
+    ("quotes", "followup_sent_at", "TEXT"),
 ]
 
 

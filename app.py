@@ -9,6 +9,7 @@ from auth import (login_required, role_required, current_user,
                   csrf_token, csrf_ok, login_locked_until,
                   record_failed_login, clear_failed_login)
 import quotepdf, sheetpdf
+from quotepdf import send_quote_email
 
 app = Flask(__name__)
 
@@ -319,6 +320,33 @@ def quote_pdf_route(qid):
     with conn() as c:
         q = c.execute("SELECT * FROM quotes WHERE id=?", (qid,)).fetchone()
     return send_file(quotepdf.build(q), as_attachment=True)
+
+@app.route("/quotes/<int:qid>/email", methods=["POST"])
+@role_required("owner", "office")
+def quote_email(qid):
+    email = (request.form.get("contact_email") or "").strip()
+    if not email:
+        flash("Add a customer email first")
+        return redirect(url_for("quote_view", qid=qid))
+    with conn() as c:
+        c.execute("UPDATE quotes SET contact_email=? WHERE id=?", (email, qid))
+        q = c.execute("SELECT * FROM quotes WHERE id=?", (qid,)).fetchone()
+    try:
+        path = quotepdf.build(q)
+        send_quote_email(q, path)
+    except Exception as e:
+        print("quote email failed for quote", qid, ":", e)
+        flash("Could not email the quote: %s" % e)
+        return redirect(url_for("quote_view", qid=qid))
+    now = datetime.now().isoformat(timespec="seconds")
+    with conn() as c:
+        # Only bumps status off 'draft' - never overwrites 'accepted'/'declined'
+        # if the office re-sends a copy after the event.
+        c.execute("""UPDATE quotes SET sent_at=?,
+                     status = CASE WHEN status='draft' THEN 'sent' ELSE status END
+                     WHERE id=?""", (now, qid))
+    flash("Quote emailed to " + email)
+    return redirect(url_for("quote_view", qid=qid))
 
 @app.route("/quotes/<int:qid>/status", methods=["POST"])
 @role_required("owner", "office")

@@ -1,9 +1,10 @@
-import re, os
+import re, os, ssl, smtplib
+from email.message import EmailMessage
 from fpdf import FPDF
 
-COMPANY   = "CHORLEY CONCRETE"        # EDIT
-ADDR_LINE = "Chorley, Lancashire"     # EDIT
-CONTACT   = "Tel 01257 000000   saleschorleyconcrete@gmail.com"  # EDIT
+COMPANY   = "CHORLEY CONCRETE"
+ADDR_LINE = "Appley Lane North, Appley Bridge, Wigan, WN6 9DR"
+CONTACT   = "Tel 01257 781221   tommy@chorleyconcrete.co.uk"
 VAT_RATE  = 0.20
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 PDF_DIR   = os.path.join(BASE_DIR, "pdfs")
@@ -118,3 +119,61 @@ def build(q):
     path = os.path.join(PDF_DIR, "Quote_%s.pdf" % ascii_only(q["quote_no"]).replace(" ", "_"))
     p.output(path)
     return path
+
+
+def _smtp_send(m):
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context()) as s:
+        s.login(os.environ.get("GMAIL_USER"), os.environ.get("GMAIL_APP_PASSWORD"))
+        s.send_message(m)
+
+
+def send_quote_email(q, pdf_path):
+    """Emails the quote PDF to the customer email on the quote record."""
+    company = COMPANY.title()
+    text = ("Hi,\n\nPlease find attached quote %s, valid until %s.\n\n"
+            "Let us know if you'd like to go ahead, or if you have any "
+            "questions - just reply to this email or give us a call.\n\n%s\n%s"
+            % (q["quote_no"], q["valid_until"], company, CONTACT))
+    html = ("<div style='font-family:Arial,sans-serif;font-size:14px'>"
+            "<p>Hi,</p>"
+            "<p>Please find attached quote <b>%s</b>, valid until <b>%s</b>.</p>"
+            "<p>Let us know if you'd like to go ahead, or if you have any "
+            "questions - just reply to this email or give us a call.</p>"
+            "<p>%s<br>%s</p></div>"
+            % (ascii_only(q["quote_no"]), q["valid_until"], company, ascii_only(CONTACT)))
+    m = EmailMessage()
+    m["From"] = os.environ.get("GMAIL_USER")
+    m["To"] = q["contact_email"]
+    m["Subject"] = "Your quote %s from %s" % (ascii_only(q["quote_no"]), company)
+    m.set_content(text)
+    m.add_alternative(html, subtype="html")
+    with open(pdf_path, "rb") as f:
+        m.add_attachment(f.read(), maintype="application", subtype="pdf",
+                         filename=os.path.basename(pdf_path))
+    _smtp_send(m)
+
+
+def send_quote_followup_email(q):
+    """The 2-days-with-no-confirmed-order chase email (see quote_followup.py).
+    No PDF attached - just a reminder pointing back at the one already sent."""
+    company = COMPANY.title()
+    where = (" for " + q["site_address"]) if q["site_address"] else ""
+    text = ("Hi,\n\nJust checking in about quote %s%s, valid until %s.\n\n"
+            "Let us know if you'd like to go ahead, or if you have any "
+            "questions - just reply to this email or give us a call.\n\n%s\n%s"
+            % (q["quote_no"], where, q["valid_until"], company, CONTACT))
+    html = ("<div style='font-family:Arial,sans-serif;font-size:14px'>"
+            "<p>Hi,</p>"
+            "<p>Just checking in about quote <b>%s</b>%s, valid until <b>%s</b>.</p>"
+            "<p>Let us know if you'd like to go ahead, or if you have any "
+            "questions - just reply to this email or give us a call.</p>"
+            "<p>%s<br>%s</p></div>"
+            % (ascii_only(q["quote_no"]), ascii_only(where), q["valid_until"],
+               company, ascii_only(CONTACT)))
+    m = EmailMessage()
+    m["From"] = os.environ.get("GMAIL_USER")
+    m["To"] = q["contact_email"]
+    m["Subject"] = "Following up on quote %s" % ascii_only(q["quote_no"])
+    m.set_content(text)
+    m.add_alternative(html, subtype="html")
+    _smtp_send(m)
