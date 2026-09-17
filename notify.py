@@ -6,20 +6,19 @@ sys.path.insert(0, "/home/SalesChorleyConcrete/laying")
 sys.path.insert(0, "/home/SalesChorleyConcrete/GenieAgg")
 
 from models import conn
+from recipients import OFFICE
 
-# load GenieAgg/.env so this works from cron and from any directory
-_env = "/home/SalesChorleyConcrete/GenieAgg/.env"
-if os.path.exists(_env):
-    for _line in open(_env):
-        _line = _line.strip()
-        if _line and not _line.startswith("#") and "=" in _line:
-            _k, _v = _line.split("=", 1)
-            os.environ.setdefault(_k.strip(), _v.strip())
+# Prefer this app's own .env if it has one; fall back to GenieAgg's so
+# existing deployments keep working either way.
+for _env in ("/home/SalesChorleyConcrete/laying/.env",
+             "/home/SalesChorleyConcrete/GenieAgg/.env"):
+    if os.path.exists(_env):
+        for _line in open(_env):
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
 
-OFFICE = [
-    ("john@chorleyconcrete.co.uk", "jYZ3fvCEBeXZl2sOslWv"),
-    ("tommy@chorleyconcrete.co.uk", "aVCQaF4pXtzZ0VLpbyj3"),
-]
 GMAIL_USER = os.environ.get("GMAIL_USER")
 GMAIL_PASS = os.environ.get("GMAIL_APP_PASSWORD")
 
@@ -35,9 +34,9 @@ def ascii_only(s):
     if not s:
         return ""
     s = str(s)
-    for a, b in (("\u2014","-"),("\u2013","-"),("\u2018","'"),("\u2019","'"),
-                 ("\u201c",'"'),("\u201d",'"'),("\u00b2","2"),("\u00b3","3"),
-                 ("\u00a3","GBP ")):
+    for a, b in (("—","-"),("–","-"),("‘","'"),("’","'"),
+                 ("“",'"'),("”",'"'),("²","2"),("³","3"),
+                 ("£","GBP ")):
         s = s.replace(a, b)
     return re.sub(r"[^\x20-\x7e\n]", "", s)
 
@@ -65,7 +64,7 @@ def send_sms(contact_id, body):
     r = requests.post("https://services.leadconnectorhq.com/conversations/messages",
         headers={"Authorization": "Bearer " + GENIE_API_KEY,
                  "Version": "2021-07-28", "Content-Type": "application/json"},
-        json={"type": "SMS", "contactId": contact_id, "message": body})
+        json={"type": "SMS", "contactId": contact_id, "message": body}, timeout=20)
     r.raise_for_status()
     return True
 
@@ -117,6 +116,14 @@ def run(dry, day):
     d = date.fromisoformat(day) if day else date.today() + timedelta(days=1)
     jdate = d.isoformat()
     label = d.strftime("%a %d %b")
+    # A single failed send (bad contact id, a timeout, the SMS API being
+    # down) used to raise straight out of this loop and abort the whole
+    # run - everyone after that point in the job list got no notification
+    # at all, with nothing telling the office it happened. Now one bad
+    # send is logged and skipped so everyone else still gets theirs; the
+    # notify_log dedup means a re-run after fixing the cause will only
+    # (and safely) retry what actually failed.
+    failures = []
     with conn() as c:
         jobs = c.execute("""SELECT * FROM jobs WHERE job_date=? AND status='booked'
                             ORDER BY slot""", (jdate,)).fetchall()
@@ -125,9 +132,12 @@ def run(dry, day):
         if not jobs:
             print("Nothing booked for", jdate)
             if not dry:
-                send_email([e for e, _ in OFFICE], "Laying - NOTHING BOOKED for " + label,
-                           "<p>No jobs on the board for %s. If that is wrong, "
-                           "the diary has not been filled in.</p>" % label)
+                try:
+                    send_email([e for e, _ in OFFICE], "Laying - NOTHING BOOKED for " + label,
+                               "<p>No jobs on the board for %s. If that is wrong, "
+                               "the diary has not been filled in.</p>" % label)
+                except Exception as e:
+                    print("could not send the nothing-booked warning:", e)
             return
 
         for j in jobs:
@@ -149,15 +159,34 @@ def run(dry, day):
                     if dry:
                         print("[dry] EMAIL", email, "|", subj)
                     else:
-                        send_email([email], subj, html)
-                        mark(c, j["id"], jdate, "email", email)
+                        try:
+                            send_email([email], subj, html)
+                            mark(c, j["id"], jdate, "email", email)
+                        except Exception as e:
+                            print("EMAIL FAILED", email, j["job_no"], "-", e)
+                            failures.append("Email to %s for job %s failed: %s"
+                                            % (email, j["job_no"], e))
                 if cid and not already(c, j["id"], jdate, "sms", cid):
                     if dry:
                         print("[dry] SMS", cid, "|", len(sms), "chars |", sms)
                     else:
-                        send_sms(cid, sms)
-                        mark(c, j["id"], jdate, "sms", cid)
+                        try:
+                            send_sms(cid, sms)
+                            mark(c, j["id"], jdate, "sms", cid)
+                        except Exception as e:
+                            print("SMS FAILED", cid, j["job_no"], "-", e)
+                            failures.append("SMS to contact %s for job %s failed: %s"
+                                            % (cid, j["job_no"], e))
     print("Done -", len(jobs), "job(s) for", jdate)
+    if failures and not dry:
+        try:
+            send_email([e for e, _ in OFFICE],
+                       "Laying - some notifications for %s FAILED" % label,
+                       "<p>These did not go out - send them by hand:</p><ul>" +
+                       "".join("<li>%s</li>" % ascii_only(f) for f in failures) +
+                       "</ul>")
+        except Exception as e:
+            print("could not even send the failure summary email:", e)
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()

@@ -11,6 +11,7 @@
 <a class="btn" href="/quotes/{{ q.id }}/pdf">Download PDF</a>
 {% for s in ['sent','declined'] %}
 <form method="post" action="/quotes/{{ q.id }}/status" style="display:inline">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="status" value="{{ s }}">
 <button class="btn alt">Mark {{ s }}</button></form>{% endfor %}
 </div>
@@ -21,6 +22,7 @@
 {% else %}
 <div class="card"><h2>Customer has gone ahead - book it in</h2>
 <form method="post" action="/quotes/{{ q.id }}/book">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <div class="row">
 <div><label>Date</label><input type="date" name="job_date" required></div>
 <div><label>Slot</label><select name="slot">{% for s in slots %}<option>{{ s }}</option>{% endfor %}</select></div>

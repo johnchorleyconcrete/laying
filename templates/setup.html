@@ -7,6 +7,7 @@
 <p><a href="/login">Back to sign in</a></p></div>
 {% else %}
 <form method="post" style="max-width:330px;margin:0 auto;background:#fff;padding:24px;border:1px solid #ddd;border-radius:6px">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <img src="/static/logo.png" style="display:block;max-width:160px;margin:0 auto 12px"><h2 style="margin:0 0 4px">Set your password</h2>
 <p style="margin:0 0 16px;color:#777;font-size:13px">{{ u.name }} - {{ u.email }}</p>
 {% with ms = get_flashed_messages() %}{% for m in ms %}<p style="background:#ffe9a8;padding:8px;border-radius:4px;font-size:13px">{{ m }}</p>{% endfor %}{% endwith %}

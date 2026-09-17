@@ -8,16 +8,17 @@
 {% elif x.pw_hash %}<span style="color:#4a7d3a">active</span>
 {% else %}<span style="color:#b8860b">awaiting setup</span>{% endif %}</td>
 <td>
-<form method="post" style="display:inline"><input type="hidden" name="resend_id" value="{{ x.id }}">
+<form method="post" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="resend_id" value="{{ x.id }}">
 <button class="btn alt" style="padding:3px 8px;font-size:12px">Send link</button></form>
 {% if x.role != 'owner' and x.active %}
-<form method="post" style="display:inline"><input type="hidden" name="deactivate_id" value="{{ x.id }}">
+<form method="post" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="deactivate_id" value="{{ x.id }}">
 <button class="btn alt" style="padding:3px 8px;font-size:12px">Turn off</button></form>
 {% endif %}</td>
 </tr>{% endfor %}</table></div>
 
 <div class="card"><h2>Add someone</h2>
 <form method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <div class="row">
 <div><label>Name</label><input type="text" name="name" required></div>
 <div><label>Email</label><input type="email" name="email" required></div>

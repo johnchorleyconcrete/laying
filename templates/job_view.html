@@ -17,6 +17,7 @@
 <p style="font-size:14px;color:#666">At least {{ min_photos }} needed before this can be signed off.
 You have {{ pics|length }}.</p>
 <form method="post" action="/jobs/{{ j.id }}/photos" enctype="multipart/form-data">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="file" name="photos" accept="image/*" capture="environment" multiple
  style="width:100%;padding:8px;border:1px solid #bbb;border-radius:4px;background:#fff">
 <button class="btn">Add photos</button>
@@ -26,11 +27,12 @@ You have {{ pics|length }}.</p>
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
 {% for p in pics %}
 <div style="width:132px">
-<a href="/static/job_photos/{{ p.filename }}" target="_blank">
-<img src="/static/job_photos/{{ p.filename }}" style="width:132px;height:100px;object-fit:cover;border-radius:5px;border:1px solid #ddd"></a>
+<a href="/photos/job/{{ p.filename }}" target="_blank">
+<img src="/photos/job/{{ p.filename }}" style="width:132px;height:100px;object-fit:cover;border-radius:5px;border:1px solid #ddd"></a>
 <div style="font-size:11px;color:#777;margin-top:2px">{{ p.uploaded_by }}</div>
 {% if not j.signed_at %}
 <form method="post" action="/jobs/{{ j.id }}/photos/{{ p.id }}/delete">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <button class="btn alt" style="padding:2px 7px;font-size:11px;margin-top:2px">Remove</button></form>
 {% endif %}
 </div>
@@ -38,13 +40,19 @@ You have {{ pics|length }}.</p>
 {% endif %}
 </div>
 
+{% if j.signed_at %}
+<div class="card"><p style="color:#666">This job is signed off and locked - details can no
+longer be edited here.</p></div>
+{% else %}
 <div class="card">
 <form method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <div class="row">
 <div><label>Date</label><input type="date" name="job_date" value="{{ j.job_date }}"></div>
 <div><label>Slot</label><select name="slot">{% for s in slots %}<option {% if s==j.slot %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
 <div><label>On site</label><input type="text" name="start_time" value="{{ j.start_time or '' }}" placeholder="8am"></div>
-<div><label>Status</label><select name="status">{% for s in ['booked','done','cancelled'] %}<option {% if s==j.status %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+<div><label>Status</label><select name="status">{% for s in ['booked','cancelled'] %}<option {% if s==j.status %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+<div style="font-size:12px;color:#888;margin-top:4px">"done" is set automatically when it's signed off</div></div>
 </div>
 
 <label>On the job</label>
@@ -75,6 +83,7 @@ You have {{ pics|length }}.</p>
 
 <button class="btn">Save</button>
 </form></div>
+{% endif %}
 
 {% if sent %}<div class="card"><h2>Sent</h2>
 {% for s in sent %}<div style="font-size:13px">{{ s.sent_at }} - {{ s.channel }} to {{ s.target }}</div>{% endfor %}</div>{% endif %}

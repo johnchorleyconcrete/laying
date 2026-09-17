@@ -11,6 +11,7 @@ carried out and completed to a satisfactory standard, and that the times and det
 are correct.</p>
 
 <form method="post" id="f">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <label>Print name</label>
 <input type="text" name="signed_name" required autocomplete="off">
 <label>Signature - sign in the box with your finger</label>

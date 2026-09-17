@@ -3,6 +3,11 @@ from datetime import datetime, date, timedelta
 
 DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "laying.db")
 
+# This is the schema as it actually exists on the live database (checked
+# against laying.db directly). CREATE TABLE IF NOT EXISTS is a no-op against
+# an existing table, so columns that were added to a table after it first
+# went live are bolted on separately below by _migrate(), which is safe to
+# run repeatedly against an already-up-to-date database.
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS quotes (
     id INTEGER PRIMARY KEY,
@@ -20,7 +25,8 @@ CREATE TABLE IF NOT EXISTS quotes (
     price REAL NOT NULL DEFAULT 0,
     vat INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL DEFAULT 'draft',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    enquiry_id INTEGER
 );
 CREATE TABLE IF NOT EXISTS jobs (
     id INTEGER PRIMARY KEY,
@@ -36,9 +42,28 @@ CREATE TABLE IF NOT EXISTS jobs (
     work_desc TEXT,
     notes TEXT,
     status TEXT NOT NULL DEFAULT 'booked',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    start_time TEXT,
+    m3 TEXT,
+    kit TEXT,
+    quantities TEXT,
+    tick_list TEXT,
+    check_who TEXT,
+    check_first TEXT,
+    signed_at TEXT,
+    signed_name TEXT,
+    signature_png TEXT,
+    signed_pdf TEXT,
+    signed_by TEXT,
+    completed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_date ON jobs(job_date);
+CREATE INDEX IF NOT EXISTS idx_jobs_job_no ON jobs(job_no);
+-- Enforced going forward only: two duplicate job numbers already exist in
+-- the live data (from the old count-then-insert race), so this can't be a
+-- table-wide UNIQUE constraint without a manual data cleanup first.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_quote_unique
+    ON jobs(quote_id) WHERE quote_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS notify_log (
     id INTEGER PRIMARY KEY,
     job_id INTEGER NOT NULL,
@@ -54,34 +79,144 @@ CREATE TABLE IF NOT EXISTS crew (
     name TEXT NOT NULL,
     phone TEXT,
     email TEXT,
+    genie_id TEXT,
     subcontractor INTEGER NOT NULL DEFAULT 0,
     active INTEGER NOT NULL DEFAULT 1
 );
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    crew_code TEXT,
+    pw_hash TEXT,
+    pw_salt TEXT,
+    setup_token TEXT,
+    token_expires TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    last_login TEXT
+);
+CREATE TABLE IF NOT EXISTS enquiries (
+    id INTEGER PRIMARY KEY,
+    source TEXT NOT NULL DEFAULT 'screed',
+    logged TEXT NOT NULL,
+    taken_by TEXT,
+    taken_dt TEXT,
+    name TEXT,
+    phone TEXT,
+    addr TEXT,
+    pc TEXT,
+    w TEXT, l TEXT, d TEXT, area TEXT, vol TEXT,
+    type TEXT, svc TEXT, whn TEXT, urgency TEXT,
+    notes TEXT,
+    photos INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'new',
+    quote_id INTEGER
+);
+CREATE TABLE IF NOT EXISTS blocks (
+    id INTEGER PRIMARY KEY,
+    block_date TEXT NOT NULL,
+    slot TEXT NOT NULL DEFAULT 'ALL',
+    crew TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    note TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_blocks_date ON blocks(block_date);
+CREATE TABLE IF NOT EXISTS job_photos (
+    id INTEGER PRIMARY KEY,
+    job_id INTEGER NOT NULL,
+    filename TEXT NOT NULL,
+    caption TEXT,
+    uploaded_by TEXT,
+    uploaded_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_job_photos_job ON job_photos(job_id);
+CREATE TABLE IF NOT EXISTS login_attempts (
+    email TEXT PRIMARY KEY,
+    fail_count INTEGER NOT NULL DEFAULT 0,
+    locked_until TEXT
+);
 """
 
+# (table, column, sqlite type) - for columns added to a table after it was
+# first created live. Applied only if the column is missing.
+_MIGRATIONS = [
+    ("jobs", "start_time", "TEXT"),
+    ("jobs", "m3", "TEXT"),
+    ("jobs", "kit", "TEXT"),
+    ("jobs", "quantities", "TEXT"),
+    ("jobs", "tick_list", "TEXT"),
+    ("jobs", "check_who", "TEXT"),
+    ("jobs", "check_first", "TEXT"),
+    ("jobs", "signed_at", "TEXT"),
+    ("jobs", "signed_name", "TEXT"),
+    ("jobs", "signature_png", "TEXT"),
+    ("jobs", "signed_pdf", "TEXT"),
+    ("jobs", "signed_by", "TEXT"),
+    ("jobs", "completed_at", "TEXT"),
+    ("crew", "genie_id", "TEXT"),
+    ("quotes", "enquiry_id", "INTEGER"),
+]
+
+
+class _Conn(sqlite3.Connection):
+    """A sqlite3.Connection that actually closes itself when used as a
+    context manager. The stdlib one only commits/rolls back on __exit__ and
+    leaves the connection (and its file handle) open - see
+    https://docs.python.org/3/library/sqlite3.html#sqlite3.Connection --
+    which meant every `with conn() as c:` in this codebase was leaking a
+    connection. Using this as the connect() factory fixes every call site
+    at once with no other code changes needed."""
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            return super().__exit__(exc_type, exc, tb)
+        finally:
+            self.close()
+
+
 def conn():
-    c = sqlite3.connect(DB)
+    c = sqlite3.connect(DB, timeout=15, factory=_Conn)
     c.row_factory = sqlite3.Row
     return c
+
+
+def _migrate(c):
+    existing = {}
+    for (table,) in c.execute("SELECT name FROM sqlite_master WHERE type='table'"):
+        existing[table] = {row[1] for row in c.execute("PRAGMA table_info(%s)" % table)}
+    for table, col, coltype in _MIGRATIONS:
+        if table in existing and col not in existing[table]:
+            c.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, col, coltype))
+
 
 def init():
     with conn() as c:
         c.executescript(SCHEMA)
+        _migrate(c)
         c.execute("INSERT OR IGNORE INTO crew (code,name,subcontractor) VALUES ('josh','Josh Halton',0)")
         c.execute("INSERT OR IGNORE INTO crew (code,name,subcontractor) VALUES ('matt','Matt Ashurst',1)")
     print("Initialised", DB)
 
-def job_no_for(quote_no, customer):
+
+def job_no_for(c, quote_no, customer):
     """With a quote the sheet takes the quote number. Without, JS + 3 letters
-    of the customer surname + running number."""
+    of the customer surname + running number.
+
+    Takes the same connection the caller is about to INSERT the job on, and
+    must be called with that connection already holding a write lock (see
+    callers in app.py, which open the transaction with BEGIN IMMEDIATE first)
+    so the count-then-insert is atomic and two people booking at the same
+    moment can't be handed the same job number."""
     if quote_no:
         return "JS-" + str(quote_no).strip().upper().replace("JS-", "")
     parts = [p for p in str(customer).split() if p.isalpha()]
     stem = (parts[-1] if parts else "XXX")[:3].upper().ljust(3, "X")
-    with conn() as c:
-        n = c.execute("SELECT COUNT(*) FROM jobs WHERE job_no LIKE ?",
-                      ("JS-" + stem + "-%",)).fetchone()[0]
+    n = c.execute("SELECT COUNT(*) FROM jobs WHERE job_no LIKE ?",
+                  ("JS-" + stem + "-%",)).fetchone()[0]
     return "JS-%s-%02d" % (stem, n + 1)
+
 
 if __name__ == "__main__":
     init()

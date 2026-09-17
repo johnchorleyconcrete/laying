@@ -1,27 +1,64 @@
-import os, calendar as calmod
+import os, sqlite3, calendar as calmod
 from datetime import date, datetime, timedelta
 from functools import wraps
 from flask import (Flask, render_template, request, redirect, url_for,
-                   session, send_file, flash)
+                   session, send_file, send_from_directory, abort, flash)
 from models import conn, job_no_for
 from auth import (login_required, role_required, current_user,
-                  hash_pw, check_pw, send_setup_email, new_token)
+                  hash_pw, check_pw, send_setup_email, new_token,
+                  csrf_token, csrf_ok, login_locked_until,
+                  record_failed_login, clear_failed_login)
 import quotepdf, sheetpdf
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("LAYING_SECRET", "change-me-in-env")
+
+# A weak/default secret key lets anyone forge a session cookie and log in as
+# anyone (Flask sessions are signed, not encrypted). This used to silently
+# fall back to a hardcoded string if LAYING_SECRET wasn't set - refusing to
+# start is safer than running wide open. Set LAYING_SECRET to a long random
+# value in the PythonAnywhere Web tab's environment variables (or in
+# wsgi.py before importing this module) - see wsgi_snippet.txt.
+_INSECURE_SECRETS = {"", "change-me-in-env", "PUT-A-LONG-RANDOM-STRING-HERE"}
+_secret = os.environ.get("LAYING_SECRET", "")
+if _secret in _INSECURE_SECRETS or len(_secret) < 20:
+    raise RuntimeError(
+        "LAYING_SECRET is missing or too weak. Set a long random string as "
+        "the LAYING_SECRET environment variable before starting this app - "
+        "a default/short secret key lets anyone forge a login session.")
+app.secret_key = _secret
+
+app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25MB per request (photo uploads)
+app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
+app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
 
 SLOTS = ["AM", "PM", "ALL"]
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PHOTO_DIR = os.path.join(BASE_DIR, "static", "job_photos")
+ENQUIRY_PHOTO_DIR = os.path.join(BASE_DIR, "static", "enquiry_photos")
+MIN_PHOTOS = 2
+
+
+@app.before_request
+def _csrf_protect():
+    if request.method == "POST" and not csrf_ok():
+        flash("That page had gone stale - please try again")
+        return redirect(request.referrer or url_for("calendar"))
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
         pw = request.form.get("pw") or ""
+        locked = login_locked_until(email)
+        if locked:
+            flash("Too many wrong attempts on that account - try again in a few minutes")
+            return render_template("login.html")
         with conn() as c:
             u = c.execute("SELECT * FROM users WHERE lower(email)=? AND active=1",
                           (email,)).fetchone()
         if u and check_pw(pw, u["pw_hash"], u["pw_salt"]):
+            clear_failed_login(email)
             session.clear()
             session["uid"] = u["id"]
             session.permanent = True
@@ -29,6 +66,7 @@ def login():
                 c.execute("UPDATE users SET last_login=? WHERE id=?",
                           (datetime.now().isoformat(timespec="seconds"), u["id"]))
             return redirect(request.args.get("next") or url_for("calendar"))
+        record_failed_login(email)
         flash("Wrong email or password")
     return render_template("login.html")
 
@@ -130,9 +168,14 @@ def calendar():
     if u["role"] == "crew":
         return redirect(url_for("my_jobs"))
     today = date.today()
-    y = int(request.args.get("y", today.year))
-    m = int(request.args.get("m", today.month))
-    first = date(y, m, 1)
+    try:
+        y = int(request.args.get("y", today.year))
+        m = int(request.args.get("m", today.month))
+        first = date(y, m, 1)
+    except (ValueError, TypeError):
+        flash("That is not a month I understand")
+        y, m = today.year, today.month
+        first = date(y, m, 1)
     last = date(y, m, calmod.monthrange(y, m)[1])
     with conn() as c:
         rows = c.execute("""SELECT * FROM jobs WHERE job_date BETWEEN ? AND ?
@@ -169,9 +212,8 @@ def enquiries():
             rows = c.execute("""SELECT * FROM enquiries WHERE status='new'
                                 ORDER BY id DESC""").fetchall()
     pix = {}
-    d = "/home/SalesChorleyConcrete/laying/static/enquiry_photos"
-    if os.path.isdir(d):
-        for f in sorted(os.listdir(d)):
+    if os.path.isdir(ENQUIRY_PHOTO_DIR):
+        for f in sorted(os.listdir(ENQUIRY_PHOTO_DIR)):
             if f.startswith("enq"):
                 try:
                     eid = int(f[3:].split("_")[0])
@@ -203,7 +245,14 @@ def quote_new():
     if request.method == "POST":
         f = request.form
         issued = f.get("date_issued") or date.today().isoformat()
-        valid = f.get("valid_until") or (date.fromisoformat(issued) + timedelta(days=30)).isoformat()
+        try:
+            valid = f.get("valid_until") or (date.fromisoformat(issued) + timedelta(days=30)).isoformat()
+            price = float(f.get("price") or 0)
+        except ValueError:
+            flash("Check the date and price fields - one of them isn't valid")
+            return render_template("quote_form.html", today=date.today().isoformat(),
+                                   valid=(date.today() + timedelta(days=30)).isoformat(),
+                                   pre=dict(f))
         with conn() as c:
             cur = c.execute("""INSERT INTO quotes
                 (quote_no,customer,site_address,postcode,contact_phone,contact_email,
@@ -214,7 +263,7 @@ def quote_new():
                  f.get("postcode","").upper(), f.get("contact_phone",""),
                  f.get("contact_email",""), issued, valid, f.get("work_desc",""),
                  f.get("extras",""), f.get("exclusions",""),
-                 float(f.get("price") or 0), 1 if f.get("vat") else 0,
+                 price, 1 if f.get("vat") else 0,
                  datetime.now().isoformat(timespec="seconds")))
             if f.get("enquiry_id"):
                 c.execute("UPDATE enquiries SET status='quoted', quote_id=? WHERE id=?",
@@ -282,19 +331,24 @@ def quote_status(qid):
 def quote_book(qid):
     f = request.form
     with conn() as c:
+        c.execute("BEGIN IMMEDIATE")
         q = c.execute("SELECT * FROM quotes WHERE id=?", (qid,)).fetchone()
         if c.execute("SELECT 1 FROM jobs WHERE quote_id=?", (qid,)).fetchone():
             flash("Already booked")
             return redirect(url_for("quote_view", qid=qid))
-        jn = job_no_for(q["quote_no"], q["customer"])
-        cur = c.execute("""INSERT INTO jobs
-            (job_no,quote_id,customer,site_address,postcode,contact_phone,
-             job_date,slot,crew,work_desc,notes,status,created_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,'booked',?)""",
-            (jn, qid, q["customer"], q["site_address"], q["postcode"],
-             q["contact_phone"], f["job_date"], f.get("slot","ALL"),
-             ",".join(f.getlist("crew")), q["work_desc"], f.get("notes",""),
-             datetime.now().isoformat(timespec="seconds")))
+        jn = job_no_for(c, q["quote_no"], q["customer"])
+        try:
+            cur = c.execute("""INSERT INTO jobs
+                (job_no,quote_id,customer,site_address,postcode,contact_phone,
+                 job_date,slot,crew,work_desc,notes,status,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,'booked',?)""",
+                (jn, qid, q["customer"], q["site_address"], q["postcode"],
+                 q["contact_phone"], f["job_date"], f.get("slot","ALL"),
+                 ",".join(f.getlist("crew")), q["work_desc"], f.get("notes",""),
+                 datetime.now().isoformat(timespec="seconds")))
+        except sqlite3.IntegrityError:
+            flash("Already booked")
+            return redirect(url_for("quote_view", qid=qid))
         c.execute("UPDATE quotes SET status='accepted' WHERE id=?", (qid,))
     return redirect(url_for("job_view", jid=cur.lastrowid))
 
@@ -303,8 +357,15 @@ def quote_book(qid):
 def job_new():
     if request.method == "POST":
         f = request.form
-        jn = job_no_for(f.get("quote_no",""), f["customer"])
+        if not (f.get("job_date") or "").strip():
+            flash("Date is required")
+            with conn() as c:
+                crew = c.execute("SELECT * FROM crew WHERE active=1").fetchall()
+            return render_template("job_form.html", crew=crew, slots=SLOTS,
+                                   d=date.today().isoformat())
         with conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            jn = job_no_for(c, f.get("quote_no",""), f["customer"])
             cur = c.execute("""INSERT INTO jobs
                 (job_no,customer,site_address,postcode,contact_phone,job_date,
                  slot,crew,work_desc,notes,status,created_at)
@@ -353,23 +414,32 @@ def _can_see(u, j):
 def job_view(jid):
     u = current_user()
     with conn() as c:
+        j = c.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
+        if not j or not _can_see(u, j):
+            flash("That job is not one of yours")
+            return redirect(url_for("my_jobs"))
         if request.method == "POST":
+            if j["signed_at"]:
+                flash("This job is signed off and locked - it can no longer be edited")
+                return redirect(url_for("job_view", jid=jid))
             f = request.form
+            status = f.get("status", "booked")
+            if status not in ("booked", "cancelled"):
+                # 'done' only ever gets set by the /sign flow, which also
+                # enforces the photo/signature requirements - a plain edit
+                # here must not be able to mark a job done without those.
+                status = j["status"]
             c.execute("""UPDATE jobs SET job_date=?, slot=?, crew=?, notes=?,
                          status=?, work_desc=?, quantities=?, kit=?, m3=?,
                          start_time=?, tick_list=?, check_who=?, check_first=?
                          WHERE id=?""",
                       (f["job_date"], f["slot"], ",".join(f.getlist("crew")),
-                       f.get("notes",""), f.get("status","booked"),
+                       f.get("notes",""), status,
                        f.get("work_desc",""), f.get("quantities",""),
                        f.get("kit",""), f.get("m3",""), f.get("start_time",""),
                        f.get("tick_list",""), f.get("check_who",""),
                        f.get("check_first",""), jid))
             return redirect(url_for("job_view", jid=jid))
-        j = c.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
-        if not j or not _can_see(u, j):
-            flash("That job is not one of yours")
-            return redirect(url_for("my_jobs"))
         crew = c.execute("SELECT * FROM crew WHERE active=1").fetchall()
         sent = c.execute("""SELECT * FROM notify_log WHERE job_id=?
                             ORDER BY sent_at""", (jid,)).fetchall()
@@ -385,8 +455,12 @@ def blocks_page():
             if f.get("delete_id"):
                 c.execute("DELETE FROM blocks WHERE id=?", (f["delete_id"],))
                 return redirect(url_for("blocks_page"))
-            start = date.fromisoformat(f["date_from"])
-            end = date.fromisoformat(f["date_to"])
+            try:
+                start = date.fromisoformat(f["date_from"])
+                end = date.fromisoformat(f["date_to"])
+            except (KeyError, ValueError):
+                flash("Those dates don't look right")
+                return redirect(url_for("blocks_page"))
             if end < start:
                 flash("End date is before the start date")
                 return redirect(url_for("blocks_page"))
@@ -423,20 +497,33 @@ def blocks_page():
                            today=date.today().isoformat(), slots=SLOTS)
 
 
-PHOTO_DIR = "/home/SalesChorleyConcrete/laying/static/job_photos"
-MIN_PHOTOS = 2
-
-
 def job_photos(jid):
     with conn() as c:
         return c.execute("""SELECT * FROM job_photos WHERE job_id=?
                             ORDER BY id""", (jid,)).fetchall()
 
 
+# Only these are ever written to disk - if Pillow can't decode an upload as
+# an image, it is rejected outright rather than saved as whatever extension
+# the client claimed. Previously a non-image upload (e.g. a crafted .svg or
+# .html file) that failed to parse fell back to trusting the client's
+# filename extension and writing the raw, unvalidated bytes straight into
+# the public static/ folder - a stored-content risk.
+def _save_photo(raw):
+    from PIL import Image
+    import io
+    im = Image.open(io.BytesIO(raw))
+    im.load()
+    im = im.convert("RGB")
+    im.thumbnail((1600, 1600))
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=78)
+    return buf.getvalue()
+
+
 @app.route("/jobs/<int:jid>/photos", methods=["POST"])
 @login_required
 def job_photo_upload(jid):
-    from werkzeug.utils import secure_filename
     u = current_user()
     with conn() as c:
         j = c.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
@@ -447,40 +534,37 @@ def job_photo_upload(jid):
             flash("Job is signed off - photos are locked")
             return redirect(url_for("job_view", jid=jid))
     os.makedirs(PHOTO_DIR, exist_ok=True)
-    n = 0
+    n, rejected = 0, 0
     for up in request.files.getlist("photos"):
         if not up or not up.filename:
             continue
+        raw = up.read()
+        if not raw:
+            continue
         try:
-            raw = up.read()
-            if not raw:
-                continue
-            try:
-                from PIL import Image
-                import io
-                im = Image.open(io.BytesIO(raw))
-                im = im.convert("RGB")
-                im.thumbnail((1600, 1600))
-                buf = io.BytesIO()
-                im.save(buf, "JPEG", quality=78)
-                raw = buf.getvalue()
-                ext = ".jpg"
-            except Exception:
-                ext = os.path.splitext(secure_filename(up.filename))[1].lower() or ".jpg"
-            with conn() as c:
-                cur = c.execute("""INSERT INTO job_photos
-                                   (job_id,filename,caption,uploaded_by,uploaded_at)
-                                   VALUES (?,'',?,?,?)""",
-                                (jid, request.form.get("caption", ""), u["name"],
-                                 datetime.now().isoformat(timespec="seconds")))
-                pid = cur.lastrowid
-                fn = "job%d_%d%s" % (jid, pid, ext)
-                open(os.path.join(PHOTO_DIR, fn), "wb").write(raw)
-                c.execute("UPDATE job_photos SET filename=? WHERE id=?", (fn, pid))
-            n += 1
+            jpg = _save_photo(raw)
         except Exception as e:
-            print("photo failed:", e)
-    flash("%d photo(s) added" % n if n else "No photos were added")
+            print("photo rejected (not a readable image):", up.filename, e)
+            rejected += 1
+            continue
+        with conn() as c:
+            cur = c.execute("""INSERT INTO job_photos
+                               (job_id,filename,caption,uploaded_by,uploaded_at)
+                               VALUES (?,'',?,?,?)""",
+                            (jid, request.form.get("caption", ""), u["name"],
+                             datetime.now().isoformat(timespec="seconds")))
+            pid = cur.lastrowid
+            fn = "job%d_%d.jpg" % (jid, pid)
+            with open(os.path.join(PHOTO_DIR, fn), "wb") as fh:
+                fh.write(jpg)
+            c.execute("UPDATE job_photos SET filename=? WHERE id=?", (fn, pid))
+        n += 1
+    if n:
+        flash("%d photo(s) added" % n)
+    elif rejected:
+        flash("Those files were not readable images - nothing was added")
+    else:
+        flash("No photos were added")
     return redirect(url_for("job_view", jid=jid))
 
 
@@ -502,6 +586,29 @@ def job_photo_delete(jid, pid):
                 pass
             c.execute("DELETE FROM job_photos WHERE id=?", (pid,))
     return redirect(url_for("job_view", jid=jid))
+
+
+# Job/enquiry photos used to be served straight out of /static, which Flask
+# serves to anyone with no login check at all - completed-job site photos
+# (and, once a job's signed, its printed sheet details) were reachable by
+# anyone who could guess or was handed a filename. These routes put the
+# same access rules the rest of the app uses in front of the files.
+@app.route("/photos/job/<path:filename>")
+@login_required
+def job_photo_file(filename):
+    u = current_user()
+    with conn() as c:
+        row = c.execute("SELECT * FROM job_photos WHERE filename=?", (filename,)).fetchone()
+        j = c.execute("SELECT * FROM jobs WHERE id=?", (row["job_id"],)).fetchone() if row else None
+    if not row or not j or not _can_see(u, j):
+        abort(404)
+    return send_from_directory(PHOTO_DIR, filename)
+
+
+@app.route("/photos/enquiry/<path:filename>")
+@role_required("owner", "office")
+def enquiry_photo_file(filename):
+    return send_from_directory(ENQUIRY_PHOTO_DIR, filename)
 
 
 @app.route("/jobs/<int:jid>/sign", methods=["GET", "POST"])
@@ -531,10 +638,21 @@ def job_sign(jid):
                          status='done', completed_at=?, signed_by=? WHERE id=?""",
                       (now, name, sig, now, u["name"], jid))
             j2 = c.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
-            path = sheetpdf.build(j2, sig)
-            c.execute("UPDATE jobs SET signed_pdf=? WHERE id=?",
-                      (os.path.basename(path), jid))
-            flash("Signed and saved")
+            try:
+                path = sheetpdf.build(j2, sig)
+                c.execute("UPDATE jobs SET signed_pdf=? WHERE id=?",
+                          (os.path.basename(path), jid))
+                flash("Signed and saved")
+            except Exception as e:
+                # The sign-off itself (the part that matters legally) is
+                # already committed above - a PDF rendering hiccup (bad
+                # signature data, a missing photo file) shouldn't leave the
+                # crew looking at a raw error after the customer has just
+                # signed. The PDF gets rebuilt on demand by job_sheet_pdf/
+                # completed_pdf if signed_pdf is still blank.
+                print("sheetpdf build failed after sign-off for job", jid, ":", e)
+                flash("Signed and saved (the printable sheet will be generated "
+                      "next time you open it)")
             return redirect(url_for("completed"))
     pics = job_photos(jid)
     if len(pics) < MIN_PHOTOS:
@@ -553,8 +671,7 @@ def job_sheet_pdf(jid):
             flash("That job is not one of yours")
             return redirect(url_for("my_jobs"))
     if j["signed_at"] and j["signed_pdf"]:
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            "pdfs", j["signed_pdf"])
+        path = os.path.join(BASE_DIR, "pdfs", j["signed_pdf"])
         if os.path.exists(path):
             return send_file(path, as_attachment=True)
     return send_file(sheetpdf.build(j), as_attachment=True)
@@ -586,8 +703,8 @@ def completed_pdf(jid):
         if not j or not _can_see(u, j):
             flash("That job is not one of yours")
             return redirect(url_for("my_jobs"))
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pdfs", j["signed_pdf"])
-    if not os.path.exists(path):
+    path = os.path.join(BASE_DIR, "pdfs", j["signed_pdf"]) if j["signed_pdf"] else None
+    if not path or not os.path.exists(path):
         path = sheetpdf.build(j, j["signature_png"])
     return send_file(path, as_attachment=True)
 
@@ -607,8 +724,8 @@ def crew_page():
 
 @app.context_processor
 def inject_user():
-    return {"u": current_user()}
+    return {"u": current_user(), "csrf_token": csrf_token}
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=bool(os.environ.get("FLASK_DEBUG")))

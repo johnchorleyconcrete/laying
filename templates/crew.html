@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block body %}
 <div class="card"><h1>Crew</h1>
-<form method="post"><table>
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><table>
 <tr><th>Name</th><th>Phone</th><th>Email</th></tr>
 {% for m in crew %}<tr>
 <td>{{ m.name }}<input type="hidden" name="id" value="{{ m.id }}">

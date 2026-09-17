@@ -2,5 +2,13 @@ import sys, os
 path = "/home/SalesChorleyConcrete/laying"
 if path not in sys.path:
     sys.path.insert(0, path)
-os.environ.setdefault("LAYING_SECRET", "PUT-A-LONG-RANDOM-STRING-HERE")
+
+# LAYING_SECRET must be a real random value - app.py now refuses to start
+# without one (a weak/default secret key lets anyone forge a login
+# session cookie). Set it as an actual environment variable instead of a
+# hardcoded fallback here, either:
+#   - PythonAnywhere Web tab -> "Environment variables" section, or
+#   - os.environ["LAYING_SECRET"] = "<paste a long random string here>"
+#     added to THIS file only (never commit that value to git)
+# Generate one with: python3 -c "import secrets; print(secrets.token_hex(32))"
 from app import app as application

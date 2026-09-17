@@ -5,16 +5,17 @@ from email.message import EmailMessage
 BASE = "/home/SalesChorleyConcrete/laying"
 sys.path.insert(0, BASE)
 
-TO = ["john@chorleyconcrete.co.uk", "tommy@chorleyconcrete.co.uk"]
+from recipients import BACKUP_TO as TO
 MAX_MB = 20
 
-_env = "/home/SalesChorleyConcrete/GenieAgg/.env"
-if os.path.exists(_env):
-    for _l in open(_env):
-        _l = _l.strip()
-        if _l and not _l.startswith("#") and "=" in _l:
-            _k, _v = _l.split("=", 1)
-            os.environ.setdefault(_k.strip(), _v.strip())
+for _env in ("/home/SalesChorleyConcrete/laying/.env",
+             "/home/SalesChorleyConcrete/GenieAgg/.env"):
+    if os.path.exists(_env):
+        for _l in open(_env):
+            _l = _l.strip()
+            if _l and not _l.startswith("#") and "=" in _l:
+                _k, _v = _l.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
 
 def run():
     stamp = date.today().isoformat()
@@ -53,13 +54,16 @@ def run():
                 % (zmb, zpath))
         shutil.copy(zpath, os.path.join(BASE, os.path.basename(zpath)))
 
-    with sqlite3.connect(dbcopy) as c:
+    c = sqlite3.connect(dbcopy)
+    try:
         counts = {}
         for t in ["jobs", "quotes", "enquiries", "job_photos", "users", "blocks"]:
             try:
                 counts[t] = c.execute("SELECT COUNT(*) FROM %s" % t).fetchone()[0]
             except Exception:
                 counts[t] = "-"
+    finally:
+        c.close()
 
     rows = "".join("<tr><td style='padding:3px 14px 3px 0'>%s</td><td><b>%s</b></td></tr>"
                    % (k, v) for k, v in counts.items())

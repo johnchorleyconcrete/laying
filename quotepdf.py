@@ -5,7 +5,9 @@ COMPANY   = "CHORLEY CONCRETE"        # EDIT
 ADDR_LINE = "Chorley, Lancashire"     # EDIT
 CONTACT   = "Tel 01257 000000   saleschorleyconcrete@gmail.com"  # EDIT
 VAT_RATE  = 0.20
-PDF_DIR   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pdfs")
+BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
+PDF_DIR   = os.path.join(BASE_DIR, "pdfs")
+LOGO      = os.path.join(BASE_DIR, "static", "logo.png")
 
 def ascii_only(s):
     if not s:
@@ -19,7 +21,8 @@ def ascii_only(s):
 
 class Quote(FPDF):
     def header(self):
-        self.image("/home/SalesChorleyConcrete/laying/static/logo.png", x=10, y=8, w=34)
+        if os.path.exists(LOGO):
+            self.image(LOGO, x=10, y=8, w=34)
         self.set_xy(10, 31)
         self.set_font("Helvetica", "", 9)
         self.set_text_color(90, 90, 90)

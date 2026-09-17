@@ -5,8 +5,9 @@ ORANGE = (221, 106, 45)
 DARK   = (48, 52, 62)
 GREY   = (240, 240, 238)
 PINK   = (250, 243, 241)
-LOGO   = "/home/SalesChorleyConcrete/laying/static/logo.png"
-PDF_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pdfs")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOGO   = os.path.join(BASE_DIR, "static", "logo.png")
+PDF_DIR = os.path.join(BASE_DIR, "pdfs")
 ADDR = ["Appley Lane North, Appley Bridge, Wigan, WN6 9DR",
         "01257 781221   tommy@chorleyconcrete.co.uk"]
 FOOT = "Chorley Concrete Ltd   VAT Reg. No. 219 2725 08   Company's House Reg: 10062785"
@@ -218,11 +219,17 @@ def build(j, sig_png_b64=None):
 
     if sig_png_b64:
         raw = base64.b64decode(sig_png_b64.split(",")[-1])
-        tmp = os.path.join(PDF_DIR, "_sig_tmp.png")
-        open(tmp, "wb").write(raw)
+        # A fixed filename here (as opposed to one unique per build) meant
+        # two people signing off jobs at the same moment could each
+        # overwrite or delete the other's temp file mid-render.
+        tmp = os.path.join(PDF_DIR, "_sig_tmp_%s_%d.png" % (ascii_only(j["job_no"]), os.getpid()))
+        with open(tmp, "wb") as fh:
+            fh.write(raw)
         y = p.get_y()
-        p.image(tmp, x=12, y=y, w=62)
-        os.remove(tmp)
+        try:
+            p.image(tmp, x=12, y=y, w=62)
+        finally:
+            os.remove(tmp)
         p.set_y(y + 24)
     else:
         p.ln(20)

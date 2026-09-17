@@ -7,13 +7,20 @@ from models import conn
 
 SITE = "https://laying-saleschorleyconcrete.pythonanywhere.com"
 
-_env = "/home/SalesChorleyConcrete/GenieAgg/.env"
-if os.path.exists(_env):
-    for _l in open(_env):
-        _l = _l.strip()
-        if _l and not _l.startswith("#") and "=" in _l:
-            _k, _v = _l.split("=", 1)
-            os.environ.setdefault(_k.strip(), _v.strip())
+# Prefer this app's own .env if it has one; fall back to GenieAgg's so
+# existing deployments that only ever had the GenieAgg copy keep working.
+# (Relying solely on another project's .env means this app's email/SMS can
+# break the moment someone touches GenieAgg without knowing laying depends
+# on it - move GMAIL_USER/GMAIL_APP_PASSWORD/GENIE_API_KEY into a local
+# .env here when convenient.)
+for _env in ("/home/SalesChorleyConcrete/laying/.env",
+             "/home/SalesChorleyConcrete/GenieAgg/.env"):
+    if os.path.exists(_env):
+        for _l in open(_env):
+            _l = _l.strip()
+            if _l and not _l.startswith("#") and "=" in _l:
+                _k, _v = _l.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
 
 def hash_pw(pw, salt=None):
     salt = salt or secrets.token_hex(16)
@@ -85,3 +92,59 @@ def new_token(user_id):
                   (tok, (datetime.now() + timedelta(days=7)).isoformat(timespec="seconds"),
                    user_id))
     return tok
+
+
+# --- login lockout -----------------------------------------------------
+# Internet-facing login with no rate limiting at all was a straightforward
+# brute-force target. This is a simple per-email counter, not per-IP (no
+# infra for that here) - a nuisance-level actor could lock out a known
+# email on purpose, but a 15-minute lockout the office can see and clear
+# is a fair trade for shutting down unattended password guessing.
+MAX_FAILS = 8
+LOCK_MINUTES = 15
+
+def login_locked_until(email):
+    if not email:
+        return None
+    with conn() as c:
+        row = c.execute("SELECT locked_until FROM login_attempts WHERE email=?",
+                        (email,)).fetchone()
+    if row and row["locked_until"] and row["locked_until"] > datetime.now().isoformat(timespec="seconds"):
+        return row["locked_until"]
+    return None
+
+def record_failed_login(email):
+    if not email:
+        return
+    with conn() as c:
+        row = c.execute("SELECT fail_count FROM login_attempts WHERE email=?", (email,)).fetchone()
+        count = (row["fail_count"] if row else 0) + 1
+        locked_until = (datetime.now() + timedelta(minutes=LOCK_MINUTES)).isoformat(timespec="seconds") \
+            if count >= MAX_FAILS else None
+        c.execute("""INSERT INTO login_attempts (email, fail_count, locked_until) VALUES (?,?,?)
+                     ON CONFLICT(email) DO UPDATE SET fail_count=excluded.fail_count,
+                     locked_until=excluded.locked_until""", (email, count, locked_until))
+
+def clear_failed_login(email):
+    if not email:
+        return
+    with conn() as c:
+        c.execute("DELETE FROM login_attempts WHERE email=?", (email,))
+
+
+# --- CSRF ----------------------------------------------------------------
+# No CSRF protection existed at all. This is a minimal same-session token
+# check rather than pulling in Flask-WTF: csrf_token() mints/reuses one
+# per session (call it from templates), csrf_ok() checks a submitted POST
+# against it (call it from app.py's before_request).
+def csrf_token():
+    tok = session.get("_csrf")
+    if not tok:
+        tok = secrets.token_urlsafe(24)
+        session["_csrf"] = tok
+    return tok
+
+def csrf_ok():
+    tok = session.get("_csrf")
+    submitted = request.form.get("csrf_token", "")
+    return bool(tok) and secrets.compare_digest(tok, submitted)

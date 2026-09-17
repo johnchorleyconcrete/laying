@@ -19,14 +19,16 @@ button:hover{background:var(--orange-dk)}
        padding:11px 13px;border-radius:7px;font-size:14px;font-weight:600;margin-bottom:12px}
 .lnk{margin:16px 0 0;text-align:center}
 .lnk a{color:var(--muted);font-size:13px}
-</style><body><div class="box"><img src="/static/logo.png" alt="Chorley Concrete"><h2>Chorley Laying</h2><p class="sub">Sign in with your work email</p>{% with ms = get_flashed_messages() %}{% for m in ms %}<div class="flash">{{ m }}</div>{% endfor %}{% endwith %}<form method="post">
+</style><body><div class="box">
 <img src="/static/logo.png" alt="Chorley Concrete">
-<p>Sign in with your work email</p>
-{% with ms = get_flashed_messages() %}{% for m in ms %}<p>{{ m }}</p>{% endfor %}{% endwith %}
-<input type="email" name="email" placeholder="Email" required autofocus autocomplete="username"
->
-<input type="password" name="pw" placeholder="Password" required autocomplete="current-password"
->
+<h2>Chorley Laying</h2>
+<p class="sub">Sign in with your work email</p>
+{% with ms = get_flashed_messages() %}{% for m in ms %}<div class="flash">{{ m }}</div>{% endfor %}{% endwith %}
+<form method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="email" name="email" placeholder="Email" required autofocus autocomplete="username">
+<input type="password" name="pw" placeholder="Password" required autocomplete="current-password">
 <button>Sign in</button>
-<p><a href="/forgot">Forgotten your password?</a></p>
-</form><p class="lnk"><a href="/forgot">Forgotten your password?</a></p></div></body>
+</form>
+<p class="lnk"><a href="/forgot">Forgotten your password?</a></p>
+</div></body>

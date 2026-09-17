@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% block body %}
 <div class="card"><h1>New job (no quote)</h1>
 <form method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <div class="row">
 <div><label>Customer</label><input type="text" name="customer" required></div>
 <div><label>Quote no (if there is one)</label><input type="text" name="quote_no"></div>

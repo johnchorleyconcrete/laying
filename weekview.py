@@ -4,18 +4,16 @@ from email.message import EmailMessage
 
 sys.path.insert(0, "/home/SalesChorleyConcrete/laying")
 from models import conn
+from recipients import WEEKVIEW_TO as TO
 
-TO = ["john@chorleyconcrete.co.uk",
-      "tommy@chorleyconcrete.co.uk",
-      "james@chorleyconcrete.co.uk"]
-
-_env = "/home/SalesChorleyConcrete/GenieAgg/.env"
-if os.path.exists(_env):
-    for _l in open(_env):
-        _l = _l.strip()
-        if _l and not _l.startswith("#") and "=" in _l:
-            _k, _v = _l.split("=", 1)
-            os.environ.setdefault(_k.strip(), _v.strip())
+for _env in ("/home/SalesChorleyConcrete/laying/.env",
+             "/home/SalesChorleyConcrete/GenieAgg/.env"):
+    if os.path.exists(_env):
+        for _l in open(_env):
+            _l = _l.strip()
+            if _l and not _l.startswith("#") and "=" in _l:
+                _k, _v = _l.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
 
 ORANGE, INK, MUTED, LINE = "#E8642A", "#1F2329", "#5A6670", "#D5DBDF"
 
