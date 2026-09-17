@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 from functools import wraps
 from flask import (Flask, render_template, request, redirect, url_for,
                    session, send_file, send_from_directory, abort, flash)
-from models import conn, job_no_for
+from models import conn, job_no_for, next_quote_no
 from auth import (login_required, role_required, current_user,
                   hash_pw, check_pw, send_setup_email, new_token,
                   csrf_token, csrf_ok, login_locked_until,
@@ -297,6 +297,8 @@ def quote_new():
             pre = {"customer": e["name"] or "", "contact_phone": e["phone"] or "",
                    "site_address": e["addr"] or "", "postcode": e["pc"] or "",
                    "work_desc": line, "enquiry_id": e["id"]}
+    with conn() as c:
+        pre.setdefault("quote_no", next_quote_no(c))
     return render_template("quote_form.html", today=date.today().isoformat(),
                            valid=(date.today() + timedelta(days=30)).isoformat(),
                            pre=pre)

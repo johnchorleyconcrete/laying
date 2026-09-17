@@ -1,4 +1,4 @@
-import os, sqlite3
+import os, re, sqlite3
 from datetime import datetime, date, timedelta
 
 DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "laying.db")
@@ -198,6 +198,26 @@ def init():
         c.execute("INSERT OR IGNORE INTO crew (code,name,subcontractor) VALUES ('josh','Josh Halton',0)")
         c.execute("INSERT OR IGNORE INTO crew (code,name,subcontractor) VALUES ('matt','Matt Ashurst',1)")
     print("Initialised", DB)
+
+
+def next_quote_no(c):
+    """Best guess at the next plain quote number, so the office doesn't have
+    to remember where they got to. Looks at both quotes.quote_no and
+    jobs.job_no (a job booked straight off a quote number is stored as
+    "JS-<quote_no>") since a number might only show up in one of the two -
+    e.g. today, quotes is empty but 4127 already exists as a job. Purely a
+    suggestion: the field stays editable so a number from outside the
+    system (or a non-numeric one) can still be typed in as before."""
+    nums = []
+    for (qn,) in c.execute("SELECT quote_no FROM quotes"):
+        m = re.fullmatch(r"\d+", (qn or "").strip())
+        if m:
+            nums.append(int(m.group()))
+    for (jn,) in c.execute("SELECT job_no FROM jobs WHERE job_no LIKE 'JS-%'"):
+        m = re.fullmatch(r"JS-(\d+)", jn or "")
+        if m:
+            nums.append(int(m.group(1)))
+    return str(max(nums) + 1) if nums else ""
 
 
 def job_no_for(c, quote_no, customer):

@@ -7,7 +7,7 @@ Filled in from screed enquiry #{{ p.enquiry_id }}. Check it over and add the pri
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 {% if p.enquiry_id %}<input type="hidden" name="enquiry_id" value="{{ p.enquiry_id }}">{% endif %}
 <div class="row">
-<div><label>Quote number</label><input type="text" name="quote_no" required placeholder="4127"></div>
+<div><label>Quote number</label><input type="text" name="quote_no" required placeholder="4127" value="{{ p.quote_no or '' }}"></div>
 <div><label>Customer</label><input type="text" name="customer" required value="{{ p.customer or '' }}"></div>
 </div>
 <div class="row">
