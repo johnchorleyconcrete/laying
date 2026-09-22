@@ -67,7 +67,16 @@ def build(q):
     p.add_page()
 
     p.set_font("Helvetica", "B", 14)
-    p.cell(0, 8, "QUOTATION " + ascii_only(q["quote_no"]), new_x="LMARGIN", new_y="NEXT")
+    title = "QUOTATION " + ascii_only(q["quote_no"])
+    revision = q["revision"] if "revision" in q.keys() else 0
+    if revision:
+        title += "  (revision %d)" % revision
+    p.cell(0, 8, title, new_x="LMARGIN", new_y="NEXT")
+    if revision and q["amended_at"]:
+        p.set_font("Helvetica", "", 9)
+        p.set_text_color(120, 120, 120)
+        p.cell(0, 5, "Revised " + ascii_only(q["amended_at"][:10]), new_x="LMARGIN", new_y="NEXT")
+        p.set_text_color(0, 0, 0)
     p.ln(2)
 
     _kv(p, "Customer", q["customer"])

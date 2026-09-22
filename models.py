@@ -140,6 +140,14 @@ CREATE TABLE IF NOT EXISTS login_attempts (
     fail_count INTEGER NOT NULL DEFAULT 0,
     locked_until TEXT
 );
+CREATE TABLE IF NOT EXISTS quote_amendments (
+    id INTEGER PRIMARY KEY,
+    quote_id INTEGER NOT NULL,
+    changed_by TEXT NOT NULL,
+    changed_at TEXT NOT NULL,
+    changes TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_quote_amendments_quote ON quote_amendments(quote_id);
 """
 
 # (table, column, sqlite type) - for columns added to a table after it was
@@ -162,6 +170,9 @@ _MIGRATIONS = [
     ("quotes", "enquiry_id", "INTEGER"),
     ("quotes", "sent_at", "TEXT"),
     ("quotes", "followup_sent_at", "TEXT"),
+    ("quotes", "revision", "INTEGER NOT NULL DEFAULT 0"),
+    ("quotes", "amended_at", "TEXT"),
+    ("quotes", "amended_by", "TEXT"),
 ]
 
 

@@ -311,8 +311,118 @@ def quote_view(qid):
         q = c.execute("SELECT * FROM quotes WHERE id=?", (qid,)).fetchone()
         job = c.execute("SELECT * FROM jobs WHERE quote_id=?", (qid,)).fetchone()
         crew = c.execute("SELECT * FROM crew WHERE active=1").fetchall()
+        amendments = c.execute("""SELECT * FROM quote_amendments WHERE quote_id=?
+                                  ORDER BY id DESC""", (qid,)).fetchall()
     return render_template("quote_view.html", q=q, job=job, crew=crew,
+                           amendments=amendments,
                            slots=SLOTS, today=date.today().isoformat())
+
+
+# Fields a user can actually change on the edit form, and the label to use
+# for each in the amendment log. quote_no is deliberately included - the
+# office sometimes needs to correct a mistyped number before the quote is
+# ever booked into a job.
+_QUOTE_EDIT_FIELDS = [
+    ("quote_no", "quote no"), ("customer", "customer"),
+    ("site_address", "site address"), ("postcode", "postcode"),
+    ("contact_phone", "phone"), ("contact_email", "email"),
+    ("date_issued", "issued"), ("valid_until", "valid until"),
+    ("work_desc", "work"), ("extras", "extras"), ("exclusions", "not included"),
+    ("price", "price"), ("vat", "VAT"),
+]
+
+def _quote_diff(old, new):
+    """Human-readable summary of what changed between the stored quote row
+    and the new values about to be saved, e.g. 'price: 1200.00 -> 1500.00'.
+    Returns '' if nothing actually changed."""
+    lines = []
+    for key, label in _QUOTE_EDIT_FIELDS:
+        ov, nv = old[key], new[key]
+        if key == "vat":
+            ov, nv = bool(ov), bool(nv)
+            if ov != nv:
+                lines.append("%s: %s -> %s" % (label, ov, nv))
+        elif key == "price":
+            ov, nv = round(float(ov or 0), 2), round(float(nv or 0), 2)
+            if ov != nv:
+                lines.append("%s: %.2f -> %.2f" % (label, ov, nv))
+        else:
+            ov, nv = (ov or ""), (nv or "")
+            if ov != nv:
+                lines.append("%s: %s -> %s" % (label, ov, nv))
+    return "; ".join(lines)
+
+
+@app.route("/quotes/<int:qid>/edit", methods=["GET", "POST"])
+@role_required("owner", "office")
+def quote_edit(qid):
+    u = current_user()
+    with conn() as c:
+        q = c.execute("SELECT * FROM quotes WHERE id=?", (qid,)).fetchone()
+        booked = c.execute("SELECT 1 FROM jobs WHERE quote_id=?", (qid,)).fetchone()
+    if not q:
+        flash("That quote does not exist")
+        return redirect(url_for("quotes"))
+    if booked:
+        flash("This quote has already been booked into a job, so it's locked. "
+              "To change the date, crew or notes, edit the job itself - for a "
+              "price or scope change, book a new quote instead.")
+        return redirect(url_for("quote_view", qid=qid))
+
+    if request.method == "POST":
+        f = request.form
+        try:
+            issued = f.get("date_issued") or q["date_issued"]
+            valid = f.get("valid_until") or q["valid_until"]
+            price = float(f.get("price") or 0)
+            date.fromisoformat(issued)
+            date.fromisoformat(valid)
+        except ValueError:
+            flash("Check the date and price fields - one of them isn't valid")
+            return render_template("quote_form.html", editing=True, q=q,
+                                   today=date.today().isoformat(),
+                                   valid=(date.today() + timedelta(days=30)).isoformat(),
+                                   pre=dict(f))
+        new = {"quote_no": f["quote_no"].strip(), "customer": f["customer"].strip(),
+               "site_address": f.get("site_address", ""), "postcode": f.get("postcode", "").upper(),
+               "contact_phone": f.get("contact_phone", ""), "contact_email": f.get("contact_email", ""),
+               "date_issued": issued, "valid_until": valid,
+               "work_desc": f.get("work_desc", ""), "extras": f.get("extras", ""),
+               "exclusions": f.get("exclusions", ""), "price": price,
+               "vat": 1 if f.get("vat") else 0}
+        with conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            q = c.execute("SELECT * FROM quotes WHERE id=?", (qid,)).fetchone()
+            if c.execute("SELECT 1 FROM jobs WHERE quote_id=?", (qid,)).fetchone():
+                flash("This quote was booked into a job while you were editing it, "
+                      "so the change was not saved.")
+                return redirect(url_for("quote_view", qid=qid))
+            changes = _quote_diff(q, new)
+            c.execute("""UPDATE quotes SET quote_no=?, customer=?, site_address=?,
+                         postcode=?, contact_phone=?, contact_email=?, date_issued=?,
+                         valid_until=?, work_desc=?, extras=?, exclusions=?, price=?,
+                         vat=?%s WHERE id=?""" %
+                      (", revision=revision+1, amended_at=?, amended_by=?" if changes else ""),
+                      tuple(new[k] for k, _ in _QUOTE_EDIT_FIELDS) +
+                      ((datetime.now().isoformat(timespec="seconds"), u["name"]) if changes else ()) +
+                      (qid,))
+            if changes:
+                c.execute("""INSERT INTO quote_amendments (quote_id, changed_by, changed_at, changes)
+                             VALUES (?,?,?,?)""",
+                          (qid, u["name"], datetime.now().isoformat(timespec="seconds"), changes))
+        flash("Quote updated" if changes else "No changes to save")
+        return redirect(url_for("quote_view", qid=qid))
+
+    pre = {"quote_no": q["quote_no"], "customer": q["customer"],
+           "site_address": q["site_address"], "postcode": q["postcode"],
+           "contact_phone": q["contact_phone"], "contact_email": q["contact_email"],
+           "date_issued": q["date_issued"], "valid_until": q["valid_until"],
+           "work_desc": q["work_desc"], "extras": q["extras"],
+           "exclusions": q["exclusions"], "price": "%.2f" % q["price"], "vat": q["vat"]}
+    return render_template("quote_form.html", editing=True, q=q,
+                           today=date.today().isoformat(),
+                           valid=(date.today() + timedelta(days=30)).isoformat(),
+                           pre=pre)
 
 @app.route("/quotes/<int:qid>/pdf")
 @role_required("owner", "office")

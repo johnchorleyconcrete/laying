@@ -1,6 +1,11 @@
 {% extends "base.html" %}{% block body %}
 <div class="card">
-<h1>Quote {{ q.quote_no }} <span class="tag {{ q.status }}">{{ q.status }}</span></h1>
+<h1>Quote {{ q.quote_no }}{% if q.revision %} <span style="font-size:14px;color:#666;font-weight:400">(revision {{ q.revision }})</span>{% endif %} <span class="tag {{ q.status }}">{{ q.status }}</span></h1>
+{% if q.sent_at and q.amended_at and q.amended_at > q.sent_at %}
+<p style="background:#FDECEA;border:1px solid #f3c4bd;border-radius:5px;padding:8px;font-size:14px;color:#8E2A20">
+This quote was emailed to the customer on {{ q.sent_at[:16].replace("T"," ") }} and changed afterwards, most
+recently by {{ q.amended_by }} on {{ q.amended_at[:16].replace("T"," ") }}. The PDF they were sent no longer
+matches what's shown below - re-email it or let them know before they go by the old figure.</p>{% endif %}
 <p><b>{{ q.customer }}</b><br>{{ q.site_address }} {{ q.postcode }}<br>{{ q.contact_phone }}</p>
 <p>Issued {{ q.date_issued }} &nbsp; Valid until {{ q.valid_until }}
 {% if q.valid_until < today and q.status != 'accepted' %}
@@ -9,12 +14,24 @@
 {% if q.extras %}<h2>Extras</h2><p style="white-space:pre-wrap">{{ q.extras }}</p>{% endif %}
 <p><b>GBP {{ "%.2f"|format(q.price) }}{% if q.vat %} + VAT{% endif %}</b></p>
 <a class="btn" href="/quotes/{{ q.id }}/pdf">Download PDF</a>
+{% if not job %}<a class="btn alt" href="/quotes/{{ q.id }}/edit">Edit quote</a>{% endif %}
 {% for s in ['sent','declined'] %}
 <form method="post" action="/quotes/{{ q.id }}/status" style="display:inline">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="status" value="{{ s }}">
 <button class="btn alt">Mark {{ s }}</button></form>{% endfor %}
 </div>
+
+{% if amendments %}
+<div class="card"><h2>Amendment history</h2>
+<table><tr><th>When</th><th>By</th><th>Changed</th></tr>
+{% for a in amendments %}<tr>
+<td style="white-space:nowrap">{{ a.changed_at[:16].replace("T"," ") }}</td>
+<td>{{ a.changed_by }}</td>
+<td>{{ a.changes }}</td>
+</tr>{% endfor %}
+</table></div>
+{% endif %}
 
 <div class="card">
 <h2>Email to customer</h2>
@@ -32,7 +49,10 @@ Last emailed to them {{ q.sent_at[:16].replace("T"," ") }}
 
 {% if job %}
 <div class="card"><h2>Booked</h2>
-<p><a href="/jobs/{{ job.id }}">{{ job.job_no }}</a> - {{ job.job_date }} {{ job.slot }}</p></div>
+<p><a href="/jobs/{{ job.id }}">{{ job.job_no }}</a> - {{ job.job_date }} {{ job.slot }}</p>
+<p style="color:#666;font-size:14px">This quote is locked now it's booked into a job - the job is the live
+record from here. Edit <a href="/jobs/{{ job.id }}">the job</a> for date, crew or notes; for a price or
+scope change, raise a new quote.</p></div>
 {% else %}
 <div class="card"><h2>Customer has gone ahead - book it in</h2>
 <form method="post" action="/quotes/{{ q.id }}/book">
