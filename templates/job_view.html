@@ -18,7 +18,7 @@
 You have {{ pics|length }}.</p>
 <form method="post" action="/jobs/{{ j.id }}/photos" enctype="multipart/form-data">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<input type="file" name="photos" accept="image/*" capture="environment" multiple
+<input type="file" name="photos" accept="image/*" multiple
  style="width:100%;padding:8px;border:1px solid #bbb;border-radius:4px;background:#fff">
 <button class="btn">Add photos</button>
 </form>
