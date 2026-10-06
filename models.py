@@ -166,6 +166,14 @@ CREATE TABLE IF NOT EXISTS site_visits (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_site_visits_date ON site_visits(visit_date);
+CREATE TABLE IF NOT EXISTS visit_photos (
+    id INTEGER PRIMARY KEY,
+    visit_id INTEGER NOT NULL,
+    filename TEXT NOT NULL,
+    uploaded_by TEXT,
+    uploaded_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_visit_photos_visit ON visit_photos(visit_id);
 """
 
 # (table, column, sqlite type) - for columns added to a table after it was
@@ -191,6 +199,14 @@ _MIGRATIONS = [
     ("quotes", "revision", "INTEGER NOT NULL DEFAULT 0"),
     ("quotes", "amended_at", "TEXT"),
     ("quotes", "amended_by", "TEXT"),
+    ("site_visits", "work_type", "TEXT"),
+    ("site_visits", "areas", "TEXT"),
+    ("site_visits", "survey_notes", "TEXT"),
+    ("site_visits", "surveyed_at", "TEXT"),
+    ("site_visits", "surveyed_by", "TEXT"),
+    ("site_visits", "enquiry_id", "INTEGER"),
+    ("enquiries", "email", "TEXT"),
+    ("enquiries", "visit_id", "INTEGER"),
 ]
 
 

@@ -1,26 +1,29 @@
 {% extends "base.html" %}{% block body %}
 <div class="card">
 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-<h1 style="margin:0;flex:1">Screed enquiries</h1>
+<h1 style="margin:0;flex:1">Enquiries</h1>
 <a class="btn alt" href="/enquiries?show={% if show == 'all' %}open{% else %}all{% endif %}">
 {% if show == 'all' %}Show open only{% else %}Show all{% endif %}</a>
 </div>
 </div>
 
 {% for e in enquiries %}
-<div class="card">
+<div class="card" id="enq{{ e.id }}">
 <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:baseline">
 <h2 style="margin:0;flex:1">{{ e.name }} <span style="color:#777;font-weight:400">{{ e.pc }}</span></h2>
+<span class="tag">{{ e.source }}</span>
 <span class="tag {{ e.status }}">{{ e.status }}</span>
 </div>
 <p style="margin:6px 0;font-size:14px">
 {{ e.addr }}<br>
 <b>{{ e.phone }}</b><br>
-<span style="color:#666">Taken by {{ e.taken_by }} - {{ e.logged }}</span></p>
+{% if e.email %}{{ e.email }}<br>{% endif %}
+<span style="color:#666">{% if e.visit_id %}Measured on site{% else %}Taken{% endif %} by {{ e.taken_by }} - {{ e.logged }}
+{% if e.visit_id %} - <a href="/visits/{{ e.visit_id }}">see the site visit</a>{% endif %}</span></p>
 
 <table style="font-size:14px">
 {% if e.type %}<tr><td><b>Type</b></td><td>{{ e.type }}</td></tr>{% endif %}
-{% if e.svc %}<tr><td><b>Service</b></td><td>{{ e.svc }}</td></tr>{% endif %}
+{% if e.svc %}<tr><td><b>{% if e.visit_id %}Work{% else %}Service{% endif %}</b></td><td>{{ e.svc }}</td></tr>{% endif %}
 {% if e.l or e.w %}<tr><td><b>Size</b></td><td>{{ e.l }} x {{ e.w }}{% if e.d %} at {{ e.d }}mm{% endif %}</td></tr>{% endif %}
 {% if e.area %}<tr><td><b>Area</b></td><td>{{ e.area }} m2</td></tr>{% endif %}
 {% if e.vol %}<tr><td><b>Volume</b></td><td>{{ e.vol }} m3</td></tr>{% endif %}

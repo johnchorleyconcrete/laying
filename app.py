@@ -1,4 +1,4 @@
-import os, sqlite3, calendar as calmod
+import os, json, shutil, sqlite3, calendar as calmod
 from datetime import date, datetime, timedelta
 from functools import wraps
 from flask import (Flask, render_template, request, redirect, url_for,
@@ -306,6 +306,7 @@ def quote_new():
             if e["notes"]:
                 line += "\n\n" + e["notes"]
             pre = {"customer": e["name"] or "", "contact_phone": e["phone"] or "",
+                   "contact_email": e["email"] or "",
                    "site_address": e["addr"] or "", "postcode": e["pc"] or "",
                    "work_desc": line, "enquiry_id": e["id"]}
     with conn() as c:
@@ -681,9 +682,284 @@ def visit_view(vid):
         # never be confused with a job id of the same number.
         sent = c.execute("""SELECT * FROM notify_log WHERE job_id=?
                             AND channel LIKE 'visit-%' ORDER BY sent_at""", (vid,)).fetchall()
+        pics = c.execute("SELECT * FROM visit_photos WHERE visit_id=? ORDER BY id",
+                         (vid,)).fetchall()
+    areas = _load_areas(v["areas"])
     return render_template("visit_form.html", v=v, crew=crew, editing=True,
                            picked=[x for x in (v["crew"] or "").split(",") if x],
-                           statuses=VISIT_STATUSES, sent=sent)
+                           statuses=VISIT_STATUSES, sent=sent, pics=pics,
+                           areas=areas, totals=_area_totals(areas))
+
+
+# --- Site visit survey: measurements + photos, sent to the office as an
+# enquiry. Photos live in ENQUIRY_PHOTO_DIR as visit<vid>_<pid>.jpg while
+# the survey is being done, and are copied to enq<eid>_<n>.jpg on sending
+# so the enquiries page picks them up exactly like the screed ones.
+
+def _num(s):
+    try:
+        n = float(str(s).strip())
+        return n if n > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _load_areas(raw):
+    try:
+        return json.loads(raw) if raw else []
+    except ValueError:
+        return []
+
+
+def _areas_from_form(f):
+    """One dict per filled-in row. Length/width in metres, depth in mm (same
+    as the screed calculator); area and m3 are worked out here rather than
+    trusting what the page's JavaScript showed."""
+    out = []
+    rows = zip(f.getlist("area_name"), f.getlist("area_l"),
+               f.getlist("area_w"), f.getlist("area_d"))
+    for name, l, w, d in rows:
+        if not any(x.strip() for x in (name, l, w, d)):
+            continue
+        ln, wn, dn = _num(l), _num(w), _num(d)
+        m2 = round(ln * wn, 2) if ln and wn else None
+        m3 = round(m2 * dn / 1000.0, 2) if m2 and dn else None
+        out.append({"name": name.strip(), "l": l.strip(), "w": w.strip(),
+                    "d": d.strip(), "m2": m2, "m3": m3})
+    return out
+
+
+def _area_totals(areas):
+    return {"m2": round(sum(a["m2"] or 0 for a in areas), 2),
+            "m3": round(sum(a["m3"] or 0 for a in areas), 2)}
+
+
+def _area_lines(areas):
+    lines = []
+    for a in areas:
+        bits = ["%s x %s m" % (a["l"] or "?", a["w"] or "?")]
+        if a["d"]:
+            bits.append("%s mm deep" % a["d"])
+        if a["m2"]:
+            bits.append("%.2f m2" % a["m2"])
+        if a["m3"]:
+            bits.append("%.2f m3" % a["m3"])
+        lines.append("%s: %s" % (a["name"] or "Area", ", ".join(bits)))
+    return lines
+
+
+def _visit_for_survey(vid):
+    """Loads the visit if the current user may work on its survey, else
+    flashes why not and returns None."""
+    u = current_user()
+    with conn() as c:
+        v = c.execute("SELECT * FROM site_visits WHERE id=?", (vid,)).fetchone()
+    if not v or not _can_see(u, v):
+        flash("That site visit is not one of yours")
+        return None
+    if v["surveyed_at"]:
+        flash("The survey has already gone to the office and is locked")
+        return None
+    return v
+
+
+def _save_visit_photos(vid, by, uploads):
+    os.makedirs(ENQUIRY_PHOTO_DIR, exist_ok=True)
+    n, rejected = 0, 0
+    for up in uploads:
+        if not up or not up.filename:
+            continue
+        raw = up.read()
+        if not raw:
+            continue
+        try:
+            jpg = _save_photo(raw)
+        except Exception as e:
+            print("visit photo rejected (not a readable image):", up.filename, e)
+            rejected += 1
+            continue
+        with conn() as c:
+            cur = c.execute("""INSERT INTO visit_photos (visit_id,filename,uploaded_by,uploaded_at)
+                               VALUES (?,'',?,?)""",
+                            (vid, by, datetime.now().isoformat(timespec="seconds")))
+            pid = cur.lastrowid
+            fn = "visit%d_%d.jpg" % (vid, pid)
+            with open(os.path.join(ENQUIRY_PHOTO_DIR, fn), "wb") as fh:
+                fh.write(jpg)
+            c.execute("UPDATE visit_photos SET filename=? WHERE id=?", (fn, pid))
+        n += 1
+    return n, rejected
+
+
+@app.route("/photos/visit/<path:filename>")
+@login_required
+def visit_photo_file(filename):
+    u = current_user()
+    with conn() as c:
+        row = c.execute("SELECT * FROM visit_photos WHERE filename=?", (filename,)).fetchone()
+        v = c.execute("SELECT * FROM site_visits WHERE id=?",
+                      (row["visit_id"],)).fetchone() if row else None
+    if not row or not v or not _can_see(u, v):
+        abort(404)
+    return send_from_directory(ENQUIRY_PHOTO_DIR, filename)
+
+
+@app.route("/visits/<int:vid>/survey", methods=["POST"])
+@login_required
+def visit_survey(vid):
+    u = current_user()
+    if not _visit_for_survey(vid):
+        return redirect(url_for("visit_view", vid=vid))
+    f = request.form
+    areas = _areas_from_form(f)
+    now = datetime.now().isoformat(timespec="seconds")
+    # Photos ride along in the same form as the measurements (one form, one
+    # button press) so adding or removing a photo never throws away
+    # measurements that had been typed in but not saved yet.
+    added, rejected = _save_visit_photos(vid, u["name"], request.files.getlist("photos"))
+    if f.get("delete_photo"):
+        with conn() as c:
+            row = c.execute("SELECT * FROM visit_photos WHERE id=? AND visit_id=?",
+                            (f["delete_photo"], vid)).fetchone()
+            if row:
+                try:
+                    os.remove(os.path.join(ENQUIRY_PHOTO_DIR, row["filename"]))
+                except OSError:
+                    pass
+                c.execute("DELETE FROM visit_photos WHERE id=?", (row["id"],))
+    if rejected:
+        flash("%d file(s) were not readable images and were skipped" % rejected)
+    with conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        v = c.execute("SELECT * FROM site_visits WHERE id=?", (vid,)).fetchone()
+        if v["surveyed_at"]:
+            flash("Someone else has already sent this survey to the office")
+            return redirect(url_for("visit_view", vid=vid))
+        c.execute("""UPDATE site_visits SET work_type=?, areas=?, survey_notes=?
+                     WHERE id=?""",
+                  (f.get("work_type", "").strip(), json.dumps(areas),
+                   f.get("survey_notes", ""), vid))
+        if f.get("action") != "send":
+            flash("Saved%s - press Send to office when it's finished"
+                  % (", %d photo(s) added" % added if added else ""))
+            return redirect(url_for("visit_view", vid=vid) + "#survey")
+        if not areas:
+            flash("Put in at least one set of measurements before sending")
+            return redirect(url_for("visit_view", vid=vid) + "#survey")
+        v = c.execute("SELECT * FROM site_visits WHERE id=?", (vid,)).fetchone()
+        pics = c.execute("SELECT * FROM visit_photos WHERE visit_id=? ORDER BY id",
+                         (vid,)).fetchall()
+        tot = _area_totals(areas)
+        one = areas[0] if len(areas) == 1 else {}
+        notes = "\n".join(
+            ["Measured on site by %s:" % u["name"]] + _area_lines(areas) +
+            (["", v["survey_notes"]] if v["survey_notes"] else []) +
+            (["", "Visit was for: " + v["purpose"]] if v["purpose"] else []))
+        cur = c.execute("""INSERT INTO enquiries
+            (source,logged,taken_by,taken_dt,name,phone,email,addr,pc,w,l,d,area,vol,
+             svc,notes,photos,status,visit_id)
+            VALUES ('site visit',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'new',?)""",
+            (now.replace("T", " "), u["name"], datetime.now().strftime("%a, %d %b %Y at %H:%M"),
+             v["customer"], v["contact_phone"], v["contact_email"], v["site_address"],
+             v["postcode"], one.get("w"), one.get("l"), one.get("d"),
+             "%.2f" % tot["m2"] if tot["m2"] else None,
+             "%.2f" % tot["m3"] if tot["m3"] else None,
+             v["work_type"], notes, len(pics), vid))
+        eid = cur.lastrowid
+        copied = []
+        for i, p in enumerate(pics, 1):
+            src = os.path.join(ENQUIRY_PHOTO_DIR, p["filename"])
+            dst = "enq%d_%d.jpg" % (eid, i)
+            try:
+                shutil.copyfile(src, os.path.join(ENQUIRY_PHOTO_DIR, dst))
+                copied.append(dst)
+            except OSError as e:
+                print("could not copy visit photo", src, ":", e)
+        c.execute("""UPDATE site_visits SET surveyed_at=?, surveyed_by=?, enquiry_id=?,
+                     status='done' WHERE id=?""", (now, u["name"], eid, vid))
+    try:
+        _send_survey_email(v, areas, tot, u["name"], copied,
+                           request.url_root.rstrip("/") + url_for("enquiries"))
+        flash("Sent to the office - thanks")
+    except Exception as e:
+        print("survey email failed for visit", vid, ":", e)
+        flash("Saved and it's in the enquiries list, but the email to the office "
+              "did not go: %s" % e)
+    return redirect(url_for("visit_view", vid=vid))
+
+
+def _send_survey_email(v, areas, tot, by, photo_files, link):
+    from email.message import EmailMessage
+    from html import escape
+    from recipients import OFFICE
+    import mailer
+    from PIL import Image
+    import io
+
+    def row(k, val):
+        return ("<tr><td style='padding:3px 12px 3px 0'><b>%s</b></td><td>%s</td></tr>"
+                % (k, escape(val or "")))
+    h = ["<div style='font-family:Arial,sans-serif;font-size:14px'>",
+         "<h2 style='margin:0'>Site visit measured up</h2>",
+         "<div style='color:#555;margin:2px 0 12px'>By %s, %s</div>"
+         % (escape(by), datetime.now().strftime("%a %d %b %H:%M")),
+         "<table cellspacing='0' cellpadding='0'>",
+         row("Customer", v["customer"]),
+         row("Site", "%s %s" % (v["site_address"] or "", v["postcode"] or "")),
+         row("Phone", v["contact_phone"]), row("Email", v["contact_email"]),
+         row("Work", v["work_type"]), "</table>",
+         "<h3>Measurements</h3><table cellspacing='0' cellpadding='4' "
+         "style='border-collapse:collapse;font-size:14px'>"
+         "<tr style='background:#F4F6F7'><th align='left'>Area</th><th>Length (m)</th>"
+         "<th>Width (m)</th><th>Depth (mm)</th><th>m2</th><th>m3</th></tr>"]
+    for a in areas:
+        h.append("<tr><td>%s</td><td align='center'>%s</td><td align='center'>%s</td>"
+                 "<td align='center'>%s</td><td align='center'>%s</td><td align='center'>%s</td></tr>"
+                 % (escape(a["name"] or "Area"), escape(a["l"]), escape(a["w"]), escape(a["d"]),
+                    "%.2f" % a["m2"] if a["m2"] else "", "%.2f" % a["m3"] if a["m3"] else ""))
+    h.append("<tr style='border-top:2px solid #333'><td colspan='4'><b>Total</b></td>"
+             "<td align='center'><b>%.2f</b></td><td align='center'><b>%.2f</b></td></tr></table>"
+             % (tot["m2"], tot["m3"]))
+    if v["survey_notes"]:
+        h.append("<h3>Notes from site</h3><div style='white-space:pre-wrap'>%s</div>"
+                 % escape(v["survey_notes"]))
+    h.append("<p style='margin-top:16px'><a href='%s'>Open the enquiries list to price it up</a></p>"
+             % link)
+
+    m = EmailMessage()
+    m["To"] = ", ".join(e for e, _ in OFFICE)
+    m["Subject"] = "Site visit measured - %s - %s - %.2f m3" % (
+        v["customer"], v["postcode"] or "", tot["m3"])
+    m.set_content("This needs an HTML mail client.")
+    # Graph's sendMail caps the whole request at about 4MB, so the photos
+    # go out as smaller copies and stop once the budget's used - the full
+    # size ones are all on the enquiry in the system either way.
+    budget, skipped = 2_500_000, 0
+    atts = []
+    for fn in photo_files:
+        try:
+            im = Image.open(os.path.join(ENQUIRY_PHOTO_DIR, fn))
+            im.thumbnail((1000, 1000))
+            buf = io.BytesIO()
+            im.convert("RGB").save(buf, "JPEG", quality=70)
+            data = buf.getvalue()
+        except Exception as e:
+            print("could not shrink", fn, "for email:", e)
+            skipped += 1
+            continue
+        if len(data) > budget:
+            skipped += 1
+            continue
+        budget -= len(data)
+        atts.append((data, fn))
+    if skipped:
+        h.append("<p style='color:#555'>%d more photo(s) are on the enquiry in the system "
+                 "- too many to attach.</p>" % skipped)
+    h.append("</div>")
+    m.add_alternative("".join(h), subtype="html")
+    for data, fn in atts:
+        m.add_attachment(data, maintype="image", subtype="jpeg", filename=fn)
+    mailer.send(m)
 
 
 @app.route("/blocks", methods=["GET", "POST"])

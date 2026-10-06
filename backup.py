@@ -49,7 +49,7 @@ def run():
     c = sqlite3.connect(dbcopy)
     try:
         counts = {}
-        for t in ["jobs", "quotes", "enquiries", "job_photos", "users", "blocks"]:
+        for t in ["jobs", "quotes", "enquiries", "site_visits", "job_photos", "users", "blocks"]:
             try:
                 counts[t] = c.execute("SELECT COUNT(*) FROM %s" % t).fetchone()[0]
             except Exception:
