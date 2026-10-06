@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% block body %}
+<div class="card">
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<h1 style="margin:0;flex:1">Site visits</h1>
+{% if u.role in ('owner', 'office') %}<a class="btn" href="/visits/new" style="margin:0">New site visit</a>{% endif %}
+</div>
+<p style="font-size:14px">{% if show == 'all' %}<a href="/visits">Upcoming only</a>{% else %}<a href="/visits?show=all">Show all, including past</a>{% endif %}</p>
+<table><tr><th>Date</th><th>Time</th><th>Customer</th><th>Postcode</th><th>Who</th><th>Status</th></tr>
+{% for v in visits %}<tr style="cursor:pointer" onclick="location='/visits/{{ v.id }}'">
+<td><a href="/visits/{{ v.id }}">{{ v.visit_date }}</a></td><td>{{ v.visit_time or "" }}</td>
+<td>{{ v.customer }}</td><td>{{ v.postcode or "" }}</td>
+<td>{{ (v.crew or "office").replace(",", ", ") }}</td>
+<td><span class="tag visit {{ v.status }}">{{ v.status }}</span></td>
+</tr>{% else %}<tr><td colspan="6">No site visits booked.</td></tr>{% endfor %}
+</table></div>{% endblock %}

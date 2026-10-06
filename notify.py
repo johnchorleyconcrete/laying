@@ -86,6 +86,43 @@ def sms_line(j, label):
         head += ". " + desc[:room].rstrip(" ,.")
     return ascii_only(head)
 
+def visit_html(v, label):
+    def row(k, val):
+        return "<tr><td style='padding:3px 12px 3px 0'><b>%s</b></td><td>%s</td></tr>" % (k, val)
+    h = ["<div style='font-family:Arial,sans-serif;font-size:14px'>"]
+    h.append("<h2 style='margin:0'>SITE VISIT</h2>")
+    h.append("<div style='color:#555;margin:2px 0 12px'>%s &nbsp; %s</div>"
+             % (label, v["visit_time"] or "time to be arranged"))
+    h.append("<table cellspacing='0' cellpadding='0'>")
+    h.append(row("Customer", v["customer"] or ""))
+    h.append(row("Site", (v["site_address"] or "") + " " + (v["postcode"] or "")))
+    if v["contact_phone"]:
+        h.append(row("Phone", v["contact_phone"]))
+    if v["contact_email"]:
+        h.append(row("Email", v["contact_email"]))
+    h.append(row("Going", (v["crew"] or "office").replace(",", ", ")))
+    h.append("</table>")
+    if v["purpose"]:
+        h.append("<h3>What it's for</h3><div style='white-space:pre-wrap'>%s</div>" % v["purpose"])
+    if v["notes"]:
+        h.append("<h3>Notes</h3><div style='white-space:pre-wrap'>%s</div>" % v["notes"])
+    h.append("</div>")
+    return "".join(h)
+
+def visit_sms(v, label):
+    # Unlike the job text this carries the customer's address and phone, so
+    # whoever is going has everything they need without opening the email.
+    where = ", ".join(x for x in (v["customer"], v["site_address"], v["postcode"]) if x)
+    head = "CHORLEY SITE VISIT %s%s. %s" % (
+        label, " " + v["visit_time"] if v["visit_time"] else "", where)
+    if v["contact_phone"]:
+        head += ". Tel " + v["contact_phone"]
+    desc = ascii_only(v["purpose"] or "").replace("\n", " ")
+    room = 300 - len(head)
+    if room > 25 and desc:
+        head += ". " + desc[:room].rstrip(" ,.")
+    return ascii_only(head)
+
 def already(c, jid, jdate, chan, target):
     return c.execute("""SELECT 1 FROM notify_log WHERE job_id=? AND job_date=?
                         AND channel=? AND target=?""",
@@ -122,46 +159,59 @@ def run(dry, day):
                                "the diary has not been filled in.</p>" % label)
                 except Exception as e:
                     print("could not send the nothing-booked warning:", e)
-            return
 
+        # Each item is (log id, name used in errors, email subject, email
+        # html, sms text, crew codes, notify_log channel prefix). Site visits
+        # log under "visit-email"/"visit-sms" so a visit can never be
+        # mistaken for the job with the same id in notify_log.
+        items = []
         for j in jobs:
-            html = sheet_html(j, label)
-            sms = sms_line(j, label)
-            subj = "Job sheet %s - %s - %s %s" % (j["job_no"], j["customer"], label, j["slot"])
+            items.append((j["id"], "job " + j["job_no"],
+                          "Job sheet %s - %s - %s %s" % (j["job_no"], j["customer"], label, j["slot"]),
+                          sheet_html(j, label), sms_line(j, label), j["crew"], ""))
+        visits = c.execute("""SELECT * FROM site_visits WHERE visit_date=? AND status='booked'
+                              ORDER BY visit_time""", (jdate,)).fetchall()
+        for v in visits:
+            items.append((v["id"], "site visit for " + (v["customer"] or ""),
+                          "Site visit - %s - %s - %s %s" % (v["customer"], v["postcode"] or "",
+                                                            label, v["visit_time"] or ""),
+                          visit_html(v, label), visit_sms(v, label), v["crew"], "visit-"))
+
+        for jid, what, subj, html, sms, crew_codes, pre in items:
             targets = []
-            for code in [x for x in (j["crew"] or "").split(",") if x]:
+            for code in [x for x in (crew_codes or "").split(",") if x]:
                 m = crew.get(code)
                 if not m:
-                    print("WARN unknown crew code", code, "on job", j["id"])
+                    print("WARN unknown crew code", code, "on", what)
                     continue
                 targets.append((m["email"], m["genie_id"]))
             for e, ph in OFFICE:
                 targets.append((e, ph))
 
             for email, cid in targets:
-                if email and not already(c, j["id"], jdate, "email", email):
+                if email and not already(c, jid, jdate, pre + "email", email):
                     if dry:
                         print("[dry] EMAIL", email, "|", subj)
                     else:
                         try:
                             send_email([email], subj, html)
-                            mark(c, j["id"], jdate, "email", email)
+                            mark(c, jid, jdate, pre + "email", email)
                         except Exception as e:
-                            print("EMAIL FAILED", email, j["job_no"], "-", e)
-                            failures.append("Email to %s for job %s failed: %s"
-                                            % (email, j["job_no"], e))
-                if cid and not already(c, j["id"], jdate, "sms", cid):
+                            print("EMAIL FAILED", email, what, "-", e)
+                            failures.append("Email to %s for %s failed: %s"
+                                            % (email, what, e))
+                if cid and not already(c, jid, jdate, pre + "sms", cid):
                     if dry:
                         print("[dry] SMS", cid, "|", len(sms), "chars |", sms)
                     else:
                         try:
                             send_sms(cid, sms)
-                            mark(c, j["id"], jdate, "sms", cid)
+                            mark(c, jid, jdate, pre + "sms", cid)
                         except Exception as e:
-                            print("SMS FAILED", cid, j["job_no"], "-", e)
-                            failures.append("SMS to contact %s for job %s failed: %s"
-                                            % (cid, j["job_no"], e))
-    print("Done -", len(jobs), "job(s) for", jdate)
+                            print("SMS FAILED", cid, what, "-", e)
+                            failures.append("SMS to contact %s for %s failed: %s"
+                                            % (cid, what, e))
+    print("Done -", len(jobs), "job(s) and", len(visits), "site visit(s) for", jdate)
     if failures and not dry:
         try:
             send_email([e for e, _ in OFFICE],

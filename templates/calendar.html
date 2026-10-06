@@ -11,9 +11,13 @@
 {% for day in week %}
 <td class="{% if day.month != m %}out{% elif day == today %}today{% endif %}">
 <div class="dn">{{ day.day }}
-<a href="/jobs/new?d={{ day.isoformat() }}" style="float:right;text-decoration:none;color:#999">+</a></div>
+<a href="/jobs/new?d={{ day.isoformat() }}" title="New job" style="float:right;text-decoration:none;color:#999">+</a>
+<a href="/visits/new?d={{ day.isoformat() }}" title="New site visit" style="float:right;text-decoration:none;color:var(--orange);margin-right:7px">sv</a></div>
 {% for b in blk_day.get(day.isoformat(), []) %}
 <span class="blk">{{ b.crew|upper }} {{ b.reason }}</span>
+{% endfor %}
+{% for v in vis_day.get(day.isoformat(), []) %}
+<a class="ev visit" href="/visits/{{ v.id }}">SITE VISIT{% if v.visit_time %} {{ v.visit_time }}{% endif %}<br>{{ v.postcode or v.customer }}</a>
 {% endfor %}
 {% for j in by_day.get(day.isoformat(), []) %}
 <a class="ev {% if j.crew == 'matt' %}matt{% elif ',' in j.crew %}both{% endif %}" href="/jobs/{{ j.id }}">
@@ -30,5 +34,11 @@
 {{ j.customer }} &nbsp; {{ j.postcode }}<br>
 <span style="color:#666;font-size:12px">{{ j.crew.replace(",", ", ") }}</span></a>
 {% else %}<p>Nothing booked.</p>{% endfor %}
+<h2>Site visits</h2>
+{% for v in upcoming_visits %}
+<a href="/visits/{{ v.id }}" style="display:block;border:1px solid #ddd;border-left:4px solid var(--orange);border-radius:5px;padding:9px;margin-bottom:7px;text-decoration:none;color:#1a1a1a;background:#fff">
+<b>{{ v.visit_date }}{% if v.visit_time %} {{ v.visit_time }}{% endif %}</b> &nbsp; SITE VISIT<br>
+{{ v.customer }} &nbsp; {{ v.postcode or "" }}</a>
+{% else %}<p>No site visits booked.</p>{% endfor %}
 </div>
 </div>{% endblock %}

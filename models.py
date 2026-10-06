@@ -148,6 +148,24 @@ CREATE TABLE IF NOT EXISTS quote_amendments (
     changes TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_quote_amendments_quote ON quote_amendments(quote_id);
+-- Site visits (measure-ups, pricing visits) - kept apart from jobs so they
+-- never count as laying work, get a job number, or need signing off.
+CREATE TABLE IF NOT EXISTS site_visits (
+    id INTEGER PRIMARY KEY,
+    customer TEXT NOT NULL,
+    site_address TEXT,
+    postcode TEXT,
+    contact_phone TEXT,
+    contact_email TEXT,
+    visit_date TEXT NOT NULL,
+    visit_time TEXT,
+    crew TEXT NOT NULL DEFAULT '',
+    purpose TEXT,
+    notes TEXT,
+    status TEXT NOT NULL DEFAULT 'booked',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_site_visits_date ON site_visits(visit_date);
 """
 
 # (table, column, sqlite type) - for columns added to a table after it was

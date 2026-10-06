@@ -1,0 +1,55 @@
+{% extends "base.html" %}{% block body %}
+{% set can_edit = u.role in ('owner', 'office') %}
+<div class="card">
+<h1>{% if editing %}Site visit <span class="tag visit {{ v.status }}">{{ v.status }}</span>{% else %}New site visit{% endif %}</h1>
+{% if editing %}
+<p><b>{{ v.customer }}</b><br>{{ v.site_address or "" }} {{ v.postcode or "" }}<br>
+{% if v.contact_phone %}<a href="tel:{{ v.contact_phone }}">{{ v.contact_phone }}</a><br>{% endif %}
+{% if v.contact_email %}<a href="mailto:{{ v.contact_email }}">{{ v.contact_email }}</a><br>{% endif %}
+<b>{{ v.visit_date }}{% if v.visit_time %} at {{ v.visit_time }}{% endif %}</b></p>
+{% if v.postcode %}<a class="btn alt" target="_blank" href="https://www.google.com/maps/search/?api=1&query={{ ((v.site_address or '') ~ ' ' ~ v.postcode)|urlencode }}">Map</a>{% endif %}
+{% if not can_edit %}
+{% if v.purpose %}<h3>What it's for</h3><div style="white-space:pre-wrap">{{ v.purpose }}</div>{% endif %}
+{% if v.notes %}<h3>Notes</h3><div style="white-space:pre-wrap">{{ v.notes }}</div>{% endif %}
+{% endif %}
+{% endif %}
+</div>
+
+{% if can_edit %}
+<div class="card">
+<form method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<h2>Customer</h2>
+<div class="row">
+<div><label>Customer</label><input type="text" name="customer" value="{{ v.customer or '' }}" required></div>
+<div><label>Phone</label><input type="tel" name="contact_phone" value="{{ v.contact_phone or '' }}"></div>
+<div><label>Email</label><input type="email" name="contact_email" value="{{ v.contact_email or '' }}"></div>
+</div>
+<div class="row">
+<div><label>Site address</label><input type="text" name="site_address" value="{{ v.site_address or '' }}"></div>
+<div><label>Postcode</label><input type="text" name="postcode" value="{{ v.postcode or '' }}" required></div>
+</div>
+
+<h2>The visit</h2>
+<div class="row">
+<div><label>Date</label><input type="date" name="visit_date" value="{{ v.visit_date or '' }}" required></div>
+<div><label>Time</label><input type="time" name="visit_time" value="{{ v.visit_time or '' }}"></div>
+{% if editing %}
+<div><label>Status</label><select name="status">{% for s in statuses %}<option {% if s==v.status %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+{% endif %}
+</div>
+<label>Who's going (the office gets a copy anyway)</label>
+{% for m in crew %}<label style="font-weight:400"><input type="checkbox" name="crew" value="{{ m.code }}" {% if m.code in picked %}checked{% endif %}> {{ m.name }}{% if m.subcontractor %} (subcontractor){% endif %}</label>{% endfor %}
+<label>What it's for</label>
+<textarea name="purpose" placeholder="Measure up for a driveway, price a garage base...">{{ v.purpose or "" }}</textarea>
+<label>Notes</label>
+<textarea name="notes" style="min-height:70px" placeholder="Access, parking, dog...">{{ v.notes or "" }}</textarea>
+<button class="btn">{% if editing %}Save{% else %}Book visit{% endif %}</button>
+</form>
+<p style="font-size:13px;color:#666;margin-top:12px">A text and email go out the day before, the same as the job sheets.</p>
+</div>
+{% endif %}
+
+{% if sent %}<div class="card"><h2>Sent</h2>
+{% for s in sent %}<div style="font-size:13px">{{ s.sent_at }} - {{ s.channel.replace("visit-", "") }} to {{ s.target }}</div>{% endfor %}</div>{% endif %}
+{% endblock %}

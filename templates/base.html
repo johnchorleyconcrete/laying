@@ -74,7 +74,7 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);font-size:15px}
     margin-top:3px;text-decoration:none;font-size:11px;line-height:1.3;font-weight:600}
 .ev.matt{background:#2E6B4F}
 .ev.both{background:var(--orange-dk)}
-.blk{display:block;background:repeating-linear-gradient(45deg,#E7EAEC,#E7EAEC 5px,
+.ev.visit{background:#fff;color:var(--orange-dk);border:2px solid var(--orange)}.blk{display:block;background:repeating-linear-gradient(45deg,#E7EAEC,#E7EAEC 5px,
      #DADEE1 5px,#DADEE1 10px);color:var(--muted);border-radius:4px;padding:3px 5px;
      margin-top:3px;font-size:10px;font-weight:700;line-height:1.3}
 
@@ -85,10 +85,11 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);font-size:15px}
 <header>
 <img src="/static/logo.png" alt="Chorley Concrete" >
 {% if u and u.role == 'crew' %}
-<a href="/myjobs">Your jobs</a><a href="/completed">Signed off</a>
+<a href="/myjobs">Your jobs</a><a href="/visits">Site visits</a><a href="/completed">Signed off</a>
 {% else %}
 <a href="/">Calendar</a><a href="/enquiries">Enquiries</a><a href="/quotes">Quotes</a>
 <a href="/quotes/new">New quote</a><a href="/jobs/new">New job</a>
+<a href="/visits">Site visits</a>
 <a href="/completed">Completed</a>
 {% endif %}
 <span class="sp"></span>

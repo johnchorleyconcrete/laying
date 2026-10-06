@@ -189,17 +189,27 @@ def calendar():
                                 AND status != 'cancelled'
                                 ORDER BY job_date, slot LIMIT 15""",
                              (today.isoformat(),)).fetchall()
-    by_day, blk_day = {}, {}
+        vis = c.execute("""SELECT * FROM site_visits WHERE visit_date BETWEEN ? AND ?
+                           AND status != 'cancelled' ORDER BY visit_date, visit_time""",
+                        (first.isoformat(), last.isoformat())).fetchall()
+        upcoming_visits = c.execute("""SELECT * FROM site_visits WHERE visit_date >= ?
+                                       AND status = 'booked'
+                                       ORDER BY visit_date, visit_time LIMIT 15""",
+                                    (today.isoformat(),)).fetchall()
+    by_day, blk_day, vis_day = {}, {}, {}
     for r in rows:
         by_day.setdefault(r["job_date"], []).append(r)
     for b in blks:
         blk_day.setdefault(b["block_date"], []).append(b)
+    for v in vis:
+        vis_day.setdefault(v["visit_date"], []).append(v)
     weeks = calmod.Calendar(0).monthdatescalendar(y, m)
     prev_m = (first - timedelta(days=1))
     next_m = (last + timedelta(days=1))
     return render_template("calendar.html", weeks=weeks, by_day=by_day, blk_day=blk_day,
-                           y=y, m=m, month_name=first.strftime("%B %Y"), today=today,
-                           prev_m=prev_m, next_m=next_m, upcoming=upcoming)
+                           vis_day=vis_day, y=y, m=m, month_name=first.strftime("%B %Y"),
+                           today=today, prev_m=prev_m, next_m=next_m, upcoming=upcoming,
+                           upcoming_visits=upcoming_visits)
 
 
 @app.route("/enquiries")
@@ -585,6 +595,96 @@ def job_view(jid):
                             ORDER BY sent_at""", (jid,)).fetchall()
     return render_template("job_view.html", j=j, crew=crew, slots=SLOTS, sent=sent,
                            u=u, pics=job_photos(jid), min_photos=MIN_PHOTOS)
+
+VISIT_STATUSES = ["booked", "done", "cancelled"]
+
+def _visit_fields(f):
+    return (f["customer"].strip(), f.get("site_address", ""),
+            f.get("postcode", "").upper(), f.get("contact_phone", ""),
+            f.get("contact_email", ""), f["visit_date"], f.get("visit_time", ""),
+            ",".join(f.getlist("crew")), f.get("purpose", ""), f.get("notes", ""))
+
+
+@app.route("/visits")
+@login_required
+def visits():
+    u = current_user()
+    show = request.args.get("show", "upcoming")
+    today = date.today().isoformat()
+    with conn() as c:
+        if show == "all":
+            rows = c.execute("""SELECT * FROM site_visits
+                                ORDER BY visit_date DESC, visit_time LIMIT 200""").fetchall()
+        else:
+            rows = c.execute("""SELECT * FROM site_visits WHERE visit_date >= ?
+                                AND status = 'booked'
+                                ORDER BY visit_date, visit_time""", (today,)).fetchall()
+    rows = [v for v in rows if _can_see(u, v)]
+    return render_template("visits.html", visits=rows, show=show)
+
+
+@app.route("/visits/new", methods=["GET", "POST"])
+@role_required("owner", "office")
+def visit_new():
+    with conn() as c:
+        crew = c.execute("SELECT * FROM crew WHERE active=1").fetchall()
+    if request.method == "POST":
+        f = request.form
+        try:
+            date.fromisoformat(f.get("visit_date") or "")
+        except ValueError:
+            flash("Date is required")
+            return render_template("visit_form.html", v=dict(f), crew=crew,
+                                   picked=f.getlist("crew"), statuses=VISIT_STATUSES)
+        with conn() as c:
+            cur = c.execute("""INSERT INTO site_visits
+                (customer,site_address,postcode,contact_phone,contact_email,
+                 visit_date,visit_time,crew,purpose,notes,status,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,'booked',?)""",
+                _visit_fields(f) + (datetime.now().isoformat(timespec="seconds"),))
+        flash("Site visit booked")
+        return redirect(url_for("visit_view", vid=cur.lastrowid))
+    return render_template("visit_form.html", crew=crew, picked=[],
+                           statuses=VISIT_STATUSES,
+                           v={"visit_date": request.args.get("d", date.today().isoformat())})
+
+
+@app.route("/visits/<int:vid>", methods=["GET", "POST"])
+@login_required
+def visit_view(vid):
+    u = current_user()
+    with conn() as c:
+        v = c.execute("SELECT * FROM site_visits WHERE id=?", (vid,)).fetchone()
+        if not v or not _can_see(u, v):
+            flash("That site visit is not one of yours")
+            return redirect(url_for("visits"))
+        if request.method == "POST":
+            if u["role"] not in ("owner", "office"):
+                abort(403)
+            f = request.form
+            try:
+                date.fromisoformat(f.get("visit_date") or "")
+            except ValueError:
+                flash("Date is required")
+                return redirect(url_for("visit_view", vid=vid))
+            status = f.get("status", "booked")
+            if status not in VISIT_STATUSES:
+                status = v["status"]
+            c.execute("""UPDATE site_visits SET customer=?, site_address=?, postcode=?,
+                         contact_phone=?, contact_email=?, visit_date=?, visit_time=?,
+                         crew=?, purpose=?, notes=?, status=? WHERE id=?""",
+                      _visit_fields(f) + (status, vid))
+            flash("Saved")
+            return redirect(url_for("visit_view", vid=vid))
+        crew = c.execute("SELECT * FROM crew WHERE active=1").fetchall()
+        # notify.py logs visits under "visit-" channels so a visit id can
+        # never be confused with a job id of the same number.
+        sent = c.execute("""SELECT * FROM notify_log WHERE job_id=?
+                            AND channel LIKE 'visit-%' ORDER BY sent_at""", (vid,)).fetchall()
+    return render_template("visit_form.html", v=v, crew=crew, editing=True,
+                           picked=[x for x in (v["crew"] or "").split(",") if x],
+                           statuses=VISIT_STATUSES, sent=sent)
+
 
 @app.route("/blocks", methods=["GET", "POST"])
 @role_required("owner", "office")
