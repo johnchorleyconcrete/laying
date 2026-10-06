@@ -199,6 +199,7 @@ _MIGRATIONS = [
     ("quotes", "revision", "INTEGER NOT NULL DEFAULT 0"),
     ("quotes", "amended_at", "TEXT"),
     ("quotes", "amended_by", "TEXT"),
+    ("site_visits", "visit_time_to", "TEXT"),
     ("site_visits", "work_type", "TEXT"),
     ("site_visits", "areas", "TEXT"),
     ("site_visits", "survey_notes", "TEXT"),
@@ -247,6 +248,20 @@ def init():
         c.execute("INSERT OR IGNORE INTO crew (code,name,subcontractor) VALUES ('josh','Josh Halton',0)")
         c.execute("INSERT OR IGNORE INTO crew (code,name,subcontractor) VALUES ('matt','Matt Ashurst',1)")
     print("Initialised", DB)
+
+
+def visit_window(v):
+    """The customer's 'free between' window for a site visit as one short
+    string - "10:00-12:00", "from 10:00", "by 12:00" or "" if neither time
+    was given. visit_time is the start of the window, visit_time_to the end."""
+    a, b = v["visit_time"] or "", v["visit_time_to"] or ""
+    if a and b:
+        return "%s-%s" % (a, b)
+    if a:
+        return "from " + a
+    if b:
+        return "by " + b
+    return ""
 
 
 def next_quote_no(c):

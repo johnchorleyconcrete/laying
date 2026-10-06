@@ -4,9 +4,10 @@
 <h1>{% if editing %}Site visit <span class="tag visit {{ v.status }}">{{ v.status }}</span>{% else %}New site visit{% endif %}</h1>
 {% if editing %}
 <p><b>{{ v.customer }}</b><br>{{ v.site_address or "" }} {{ v.postcode or "" }}<br>
-{% if v.contact_phone %}<a href="tel:{{ v.contact_phone }}">{{ v.contact_phone }}</a><br>{% endif %}
+{% if v.contact_phone %}<a href="tel:{{ v.contact_phone|dialable }}">{{ v.contact_phone }}</a><br>{% endif %}
 {% if v.contact_email %}<a href="mailto:{{ v.contact_email }}">{{ v.contact_email }}</a><br>{% endif %}
-<b>{{ v.visit_date }}{% if v.visit_time %} at {{ v.visit_time }}{% endif %}</b></p>
+<b>{{ v.visit_date }}{% if v|window %} - free {{ "between " ~ v.visit_time ~ " and " ~ v.visit_time_to if v.visit_time and v.visit_time_to else v|window }}{% endif %}</b></p>
+{% if v.contact_phone %}<a class="btn" href="tel:{{ v.contact_phone|dialable }}">&#128222; Call {{ v.customer }}</a>{% endif %}
 {% if v.postcode %}<a class="btn alt" target="_blank" href="https://www.google.com/maps/search/?api=1&query={{ ((v.site_address or '') ~ ' ' ~ v.postcode)|urlencode }}">Map</a>{% endif %}
 {% if not can_edit %}
 {% if v.purpose %}<h3>What it's for</h3><div style="white-space:pre-wrap">{{ v.purpose }}</div>{% endif %}
@@ -33,7 +34,11 @@
 <h2>The visit</h2>
 <div class="row">
 <div><label>Date</label><input type="date" name="visit_date" value="{{ v.visit_date or '' }}" required></div>
-<div><label>Time</label><input type="time" name="visit_time" value="{{ v.visit_time or '' }}"></div>
+<div><label>Customer free between</label>
+<div style="display:flex;align-items:center;gap:8px">
+<input type="time" name="visit_time" value="{{ v.visit_time or '' }}" aria-label="Free from">
+<span>and</span>
+<input type="time" name="visit_time_to" value="{{ v.visit_time_to or '' }}" aria-label="Free until"></div></div>
 {% if editing %}
 <div><label>Status</label><select name="status">{% for s in statuses %}<option {% if s==v.status %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
 {% endif %}

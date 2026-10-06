@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 from functools import wraps
 from flask import (Flask, render_template, request, redirect, url_for,
                    session, send_file, send_from_directory, abort, flash)
-from models import conn, job_no_for, next_quote_no
+from models import conn, job_no_for, next_quote_no, visit_window
 from auth import (login_required, role_required, current_user,
                   hash_pw, check_pw, send_setup_email, new_token,
                   csrf_token, csrf_ok, login_locked_until,
@@ -603,6 +603,7 @@ def _visit_fields(f):
     return (f["customer"].strip(), f.get("site_address", ""),
             f.get("postcode", "").upper(), f.get("contact_phone", ""),
             f.get("contact_email", ""), f["visit_date"], f.get("visit_time", ""),
+            f.get("visit_time_to", ""),
             ",".join(f.getlist("crew")), f.get("purpose", ""), f.get("notes", ""))
 
 
@@ -640,8 +641,8 @@ def visit_new():
         with conn() as c:
             cur = c.execute("""INSERT INTO site_visits
                 (customer,site_address,postcode,contact_phone,contact_email,
-                 visit_date,visit_time,crew,purpose,notes,status,created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,'booked',?)""",
+                 visit_date,visit_time,visit_time_to,crew,purpose,notes,status,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,'booked',?)""",
                 _visit_fields(f) + (datetime.now().isoformat(timespec="seconds"),))
         flash("Site visit booked")
         return redirect(url_for("visit_view", vid=cur.lastrowid))
@@ -672,7 +673,7 @@ def visit_view(vid):
             if status not in VISIT_STATUSES:
                 status = v["status"]
             c.execute("""UPDATE site_visits SET customer=?, site_address=?, postcode=?,
-                         contact_phone=?, contact_email=?, visit_date=?, visit_time=?,
+                         contact_phone=?, contact_email=?, visit_date=?, visit_time=?, visit_time_to=?,
                          crew=?, purpose=?, notes=?, status=? WHERE id=?""",
                       _visit_fields(f) + (status, vid))
             flash("Saved")
@@ -906,7 +907,10 @@ def _send_survey_email(v, areas, tot, by, photo_files, link):
          "<table cellspacing='0' cellpadding='0'>",
          row("Customer", v["customer"]),
          row("Site", "%s %s" % (v["site_address"] or "", v["postcode"] or "")),
-         row("Phone", v["contact_phone"]), row("Email", v["contact_email"]),
+         ("<tr><td style='padding:3px 12px 3px 0'><b>Phone</b></td><td><a href='tel:%s'>%s</a></td></tr>"
+          % ("".join(ch for ch in (v["contact_phone"] or "") if ch.isdigit() or ch == "+"),
+             escape(v["contact_phone"] or ""))),
+         row("Email", v["contact_email"]),
          row("Work", v["work_type"]), "</table>",
          "<h3>Measurements</h3><table cellspacing='0' cellpadding='4' "
          "style='border-collapse:collapse;font-size:14px'>"
@@ -1237,6 +1241,11 @@ def crew_page():
             return redirect(url_for("crew_page"))
         rows = c.execute("SELECT * FROM crew ORDER BY id").fetchall()
     return render_template("crew.html", crew=rows)
+
+app.add_template_filter(visit_window, "window")
+# For tel: links - phones dial "07700900123" more reliably than "07700 900 123".
+app.add_template_filter(lambda s: "".join(ch for ch in (s or "") if ch.isdigit() or ch == "+"), "dialable")
+
 
 @app.context_processor
 def inject_user():

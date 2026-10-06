@@ -17,7 +17,7 @@
 <span class="blk">{{ b.crew|upper }} {{ b.reason }}</span>
 {% endfor %}
 {% for v in vis_day.get(day.isoformat(), []) %}
-<a class="ev visit" href="/visits/{{ v.id }}">SITE VISIT{% if v.visit_time %} {{ v.visit_time }}{% endif %}<br>{{ v.postcode or v.customer }}</a>
+<a class="ev visit" href="/visits/{{ v.id }}">SITE VISIT{% if v|window %} {{ v|window }}{% endif %}<br>{{ v.postcode or v.customer }}</a>
 {% endfor %}
 {% for j in by_day.get(day.isoformat(), []) %}
 <a class="ev {% if j.crew == 'matt' %}matt{% elif ',' in j.crew %}both{% endif %}" href="/jobs/{{ j.id }}">
@@ -37,7 +37,7 @@
 <h2>Site visits</h2>
 {% for v in upcoming_visits %}
 <a href="/visits/{{ v.id }}" style="display:block;border:1px solid #ddd;border-left:4px solid var(--orange);border-radius:5px;padding:9px;margin-bottom:7px;text-decoration:none;color:#1a1a1a;background:#fff">
-<b>{{ v.visit_date }}{% if v.visit_time %} {{ v.visit_time }}{% endif %}</b> &nbsp; SITE VISIT<br>
+<b>{{ v.visit_date }}{% if v|window %} {{ v|window }}{% endif %}</b> &nbsp; SITE VISIT<br>
 {{ v.customer }} &nbsp; {{ v.postcode or "" }}</a>
 {% else %}<p>No site visits booked.</p>{% endfor %}
 </div>

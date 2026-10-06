@@ -16,7 +16,7 @@
 </div>
 <p style="margin:6px 0;font-size:14px">
 {{ e.addr }}<br>
-<b>{{ e.phone }}</b><br>
+<b><a href="tel:{{ e.phone|dialable }}">{{ e.phone }}</a></b><br>
 {% if e.email %}{{ e.email }}<br>{% endif %}
 <span style="color:#666">{% if e.visit_id %}Measured on site{% else %}Taken{% endif %} by {{ e.taken_by }} - {{ e.logged }}
 {% if e.visit_id %} - <a href="/visits/{{ e.visit_id }}">see the site visit</a>{% endif %}</span></p>

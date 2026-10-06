@@ -5,10 +5,10 @@
 {% if u.role in ('owner', 'office') %}<a class="btn" href="/visits/new" style="margin:0">New site visit</a>{% endif %}
 </div>
 <p style="font-size:14px">{% if show == 'all' %}<a href="/visits">Upcoming only</a>{% else %}<a href="/visits?show=all">Show all, including past</a>{% endif %}</p>
-<table><tr><th>Date</th><th>Time</th><th>Customer</th><th>Postcode</th><th>Who</th><th>Status</th></tr>
+<table><tr><th>Date</th><th>Free</th><th>Customer</th><th>Postcode</th><th>Who</th><th>Status</th></tr>
 {% for v in visits %}<tr style="cursor:pointer" onclick="location='/visits/{{ v.id }}'">
-<td><a href="/visits/{{ v.id }}">{{ v.visit_date }}</a></td><td>{{ v.visit_time or "" }}</td>
-<td>{{ v.customer }}</td><td>{{ v.postcode or "" }}</td>
+<td><a href="/visits/{{ v.id }}">{{ v.visit_date }}</a></td><td>{{ v|window }}</td>
+<td>{{ v.customer }}{% if v.contact_phone %}<br><a href="tel:{{ v.contact_phone|dialable }}" onclick="event.stopPropagation()">{{ v.contact_phone }}</a>{% endif %}</td><td>{{ v.postcode or "" }}</td>
 <td>{{ (v.crew or "office").replace(",", ", ") }}</td>
 <td><span class="tag visit {{ v.status }}">{{ v.status }}</span></td>
 </tr>{% else %}<tr><td colspan="6">No site visits booked.</td></tr>{% endfor %}

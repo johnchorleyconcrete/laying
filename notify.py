@@ -5,7 +5,7 @@ from email.message import EmailMessage
 sys.path.insert(0, "/home/SalesChorleyConcrete/laying")
 sys.path.insert(0, "/home/SalesChorleyConcrete/GenieAgg")
 
-from models import conn
+from models import conn, visit_window
 from recipients import OFFICE
 import mailer
 
@@ -86,18 +86,21 @@ def sms_line(j, label):
         head += ". " + desc[:room].rstrip(" ,.")
     return ascii_only(head)
 
+def dialable(phone):
+    return "".join(ch for ch in (phone or "") if ch.isdigit() or ch == "+")
+
 def visit_html(v, label):
     def row(k, val):
         return "<tr><td style='padding:3px 12px 3px 0'><b>%s</b></td><td>%s</td></tr>" % (k, val)
     h = ["<div style='font-family:Arial,sans-serif;font-size:14px'>"]
     h.append("<h2 style='margin:0'>SITE VISIT</h2>")
     h.append("<div style='color:#555;margin:2px 0 12px'>%s &nbsp; %s</div>"
-             % (label, v["visit_time"] or "time to be arranged"))
+             % (label, ("Customer free " + visit_window(v)) if visit_window(v) else "time to be arranged"))
     h.append("<table cellspacing='0' cellpadding='0'>")
     h.append(row("Customer", v["customer"] or ""))
     h.append(row("Site", (v["site_address"] or "") + " " + (v["postcode"] or "")))
     if v["contact_phone"]:
-        h.append(row("Phone", v["contact_phone"]))
+        h.append(row("Phone", "<a href='tel:%s'>%s</a>" % (dialable(v["contact_phone"]), v["contact_phone"])))
     if v["contact_email"]:
         h.append(row("Email", v["contact_email"]))
     h.append(row("Going", (v["crew"] or "office").replace(",", ", ")))
@@ -114,9 +117,10 @@ def visit_sms(v, label):
     # whoever is going has everything they need without opening the email.
     where = ", ".join(x for x in (v["customer"], v["site_address"], v["postcode"]) if x)
     head = "CHORLEY SITE VISIT %s%s. %s" % (
-        label, " " + v["visit_time"] if v["visit_time"] else "", where)
+        label, " free " + visit_window(v) if visit_window(v) else "", where)
     if v["contact_phone"]:
-        head += ". Tel " + v["contact_phone"]
+        # No spaces, so the phone reliably turns it into a tap-to-call link.
+        head += ". Tel " + dialable(v["contact_phone"])
     desc = ascii_only(v["purpose"] or "").replace("\n", " ")
     room = 300 - len(head)
     if room > 25 and desc:
@@ -174,7 +178,7 @@ def run(dry, day):
         for v in visits:
             items.append((v["id"], "site visit for " + (v["customer"] or ""),
                           "Site visit - %s - %s - %s %s" % (v["customer"], v["postcode"] or "",
-                                                            label, v["visit_time"] or ""),
+                                                            label, visit_window(v)),
                           visit_html(v, label), visit_sms(v, label), v["crew"], "visit-"))
 
         for jid, what, subj, html, sms, crew_codes, pre in items:
